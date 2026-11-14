@@ -1,0 +1,2327 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NEURAL DRONE // 뇌 속 드론 회피 작전</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700;900&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #05070e;
+      font-family: 'Noto Sans KR', sans-serif;
+      color: #e2f1ff;
+    }
+
+    .font-cyber {
+      font-family: 'Orbitron', 'Noto Sans KR', sans-serif;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+    }
+
+    /* Glassmorphic Neon Panels */
+    .cyber-panel {
+      background: rgba(8, 13, 28, 0.78);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      box-shadow: 0 0 28px rgba(14, 165, 233, 0.18), inset 0 0 18px rgba(56, 189, 248, 0.08);
+    }
+
+    .cyber-btn {
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.25), rgba(168, 85, 247, 0.3));
+      border: 1.5px solid #38bdf8;
+      box-shadow: 0 0 18px rgba(56, 189, 248, 0.35), inset 0 0 12px rgba(56, 189, 248, 0.2);
+      transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .cyber-btn:hover {
+      transform: translateY(-2px) scale(1.02);
+      background: linear-gradient(135deg, rgba(6, 182, 212, 0.45), rgba(168, 85, 247, 0.45));
+      box-shadow: 0 0 28px rgba(56, 189, 248, 0.65), inset 0 0 16px rgba(255, 255, 255, 0.25);
+      border-color: #7dd3fc;
+    }
+
+    .cyber-btn:active {
+      transform: translateY(1px) scale(0.98);
+    }
+
+    .neon-text-cyan {
+      text-shadow: 0 0 10px rgba(34, 211, 238, 0.8), 0 0 24px rgba(34, 211, 238, 0.45);
+    }
+
+    .neon-text-magenta {
+      text-shadow: 0 0 10px rgba(244, 63, 94, 0.8), 0 0 24px rgba(232, 121, 249, 0.45);
+    }
+
+    .neon-text-gold {
+      text-shadow: 0 0 10px rgba(250, 204, 21, 0.8), 0 0 24px rgba(245, 158, 11, 0.45);
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.85; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.03); }
+    }
+
+    .animate-pulse-glow {
+      animation: pulseGlow 2.4s infinite ease-in-out;
+    }
+
+    /* Scanline subtle overlay */
+    .scanlines {
+      background: linear-gradient(
+        to bottom,
+        rgba(255,255,255,0),
+        rgba(255,255,255,0) 50%,
+        rgba(0, 210, 255, 0.025) 50%,
+        rgba(0, 210, 255, 0.025)
+      );
+      background-size: 100% 4px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <!-- Main Fullscreen Game Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Subtle CRT Scanline Layer -->
+  <div class="scanlines fixed inset-0 z-10"></div>
+
+  <!-- Top HUD Overlay -->
+  <header id="hud" class="fixed top-0 left-0 right-0 z-20 p-3 sm:p-5 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+    <!-- Left: Level & XP Progress -->
+    <div class="cyber-panel rounded-2xl px-3.5 py-2 sm:px-5 sm:py-2.5 flex items-center gap-3 sm:gap-4 pointer-events-auto">
+      <div>
+        <div class="text-[10px] sm:text-xs tracking-widest text-cyan-300/80 font-cyber">SYNAPSE LEVEL</div>
+        <div class="flex items-baseline gap-2">
+          <span id="hudLevel" class="text-xl sm:text-2xl font-black font-cyber text-cyan-300 neon-text-cyan">LV.1</span>
+          <span id="hudDifficultyTag" class="text-[11px] px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 font-semibold">안정 상태</span>
+        </div>
+      </div>
+      <!-- Level Progress Bar -->
+      <div class="w-20 sm:w-28">
+        <div class="flex justify-between text-[10px] text-slate-400 mb-1 font-cyber">
+          <span>NEXT</span>
+          <span id="hudLevelPct">0%</span>
+        </div>
+        <div class="w-full h-2 bg-slate-900/90 rounded-full overflow-hidden border border-cyan-500/30">
+          <div id="hudLevelBar" class="h-full bg-gradient-to-r from-cyan-400 via-sky-400 to-fuchsia-500 transition-all duration-150" style="width: 0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center: HP & Shield Status -->
+    <div class="cyber-panel rounded-2xl px-3.5 py-2 sm:px-5 sm:py-2.5 flex items-center gap-4 pointer-events-auto">
+      <!-- Hull Integrity (HP) -->
+      <div>
+        <div class="text-[10px] sm:text-xs tracking-widest text-rose-300/80 font-cyber mb-1">DRONE HULL</div>
+        <div id="hudHearts" class="flex items-center gap-1.5">
+          <!-- Rendered dynamically -->
+        </div>
+      </div>
+
+      <div class="h-7 w-px bg-slate-700/70"></div>
+
+      <!-- Energy Shield Indicator -->
+      <div>
+        <div class="text-[10px] sm:text-xs tracking-widest text-amber-300/80 font-cyber mb-1">AURA SHIELD</div>
+        <div id="hudShieldBadge" class="text-xs sm:text-sm font-bold flex items-center gap-1.5 text-slate-400">
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-600" id="hudShieldDot"></span>
+          <span id="hudShieldText">미장착</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Score, Best Score & Controls -->
+    <div class="flex items-center gap-2 pointer-events-auto">
+      <div class="cyber-panel rounded-2xl px-3.5 py-2 sm:px-5 sm:py-2.5 flex items-center gap-4">
+        <div class="text-right">
+          <div class="text-[10px] sm:text-xs tracking-widest text-cyan-300/80 font-cyber">SCORE</div>
+          <div id="hudScore" class="text-lg sm:text-2xl font-black font-cyber text-white">0</div>
+        </div>
+        <div class="hidden sm:block h-7 w-px bg-slate-700/70"></div>
+        <div class="hidden sm:block text-right">
+          <div class="text-[10px] sm:text-xs tracking-widest text-amber-300/80 font-cyber">BEST</div>
+          <div id="hudBestScore" class="text-lg sm:text-xl font-bold font-cyber text-amber-300 neon-text-gold">0</div>
+        </div>
+      </div>
+
+      <!-- Sound Toggle Button -->
+      <button id="btnSound" title="사운드 켜기/끄기" class="cyber-panel hover:border-cyan-400 rounded-2xl p-3 text-cyan-300 transition active:scale-95">
+        <svg id="iconSoundOn" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"/>
+        </svg>
+        <svg id="iconSoundOff" class="w-5 h-5 hidden text-rose-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5zM23 9l-6 6M17 9l6 6"/>
+        </svg>
+      </button>
+
+      <!-- Pause Toggle Button -->
+      <button id="btnPause" title="일시정지 (P / ESC)" class="cyber-panel hover:border-cyan-400 rounded-2xl p-3 text-cyan-300 transition active:scale-95">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Start Screen Modal -->
+  <div id="startOverlay" class="fixed inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-sm">
+    <div class="cyber-panel rounded-3xl max-w-lg w-full p-6 sm:p-8 text-center relative overflow-hidden">
+      <!-- Decorative Top Glow -->
+      <div class="absolute -top-24 left-1/2 -translate-x-1/2 w-72 h-48 bg-cyan-500/20 blur-3xl rounded-full pointer-events-none"></div>
+
+      <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/15 border border-cyan-400/40 text-cyan-300 text-xs font-cyber tracking-widest mb-3">
+        <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+        CORTEX DEFENSE SIMULATION
+      </div>
+
+      <h1 class="text-3xl sm:text-5xl font-black font-cyber tracking-tight text-white neon-text-cyan mb-2">
+        NEURAL DRONE
+      </h1>
+      <p class="text-sm sm:text-base text-cyan-200/90 font-medium mb-6">
+        드론을 조종해 뇌 속으로 날아드는 탄환과 폭탄을 피하세요!
+      </p>
+
+      <!-- Instructions Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left mb-7">
+        <div class="bg-slate-900/75 border border-cyan-500/25 rounded-2xl p-3.5">
+          <div class="text-cyan-400 font-bold text-xs mb-1 flex items-center gap-1.5">
+            <span>🎮</span> 전후좌우 비행
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            <span class="text-white font-semibold">WASD</span> 또는 <span class="text-white font-semibold">방향키</span>(모바일 터치 드래그)로 뇌 내부를 자유롭게 비행합니다.
+          </p>
+        </div>
+
+        <div class="bg-slate-900/75 border border-rose-500/25 rounded-2xl p-3.5">
+          <div class="text-rose-400 font-bold text-xs mb-1 flex items-center gap-1.5">
+            <span>💥</span> 4대 피질 포털 회피
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            상·하·좌·우 구멍에서 날아오는 탄환과 폭탄을 피하면 반대편 뇌 벽에 흡수되며 점수를 얻습니다.
+          </p>
+        </div>
+
+        <div class="bg-slate-900/75 border border-amber-500/25 rounded-2xl p-3.5">
+          <div class="text-amber-300 font-bold text-xs mb-1 flex items-center gap-1.5">
+            <span>🛡️</span> 시냅스 방어막
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            빛나는 에너지 코어를 획득하면 화려한 오라 방어막이 생성되어 충돌한 폭탄을 분쇄합니다!
+          </p>
+        </div>
+      </div>
+
+      <button id="btnStart" class="cyber-btn w-full py-4 rounded-2xl text-lg sm:text-xl font-black font-cyber tracking-wider text-white cursor-pointer animate-pulse-glow">
+        작전 개시 // START MISSION
+      </button>
+
+      <div class="mt-4 text-[11px] text-slate-400">
+        일시정지: <span class="text-cyan-300 font-cyber">P</span> 또는 <span class="text-cyan-300 font-cyber">ESC</span> · 최고 기록 자동 저장
+      </div>
+    </div>
+  </div>
+
+  <!-- Pause Overlay -->
+  <div id="pauseOverlay" class="fixed inset-0 z-30 hidden items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md">
+    <div class="cyber-panel rounded-3xl max-w-sm w-full p-7 text-center">
+      <div class="text-xs font-cyber tracking-widest text-cyan-400 mb-2">SYSTEM SUSPENDED</div>
+      <h2 class="text-3xl font-black font-cyber text-white neon-text-cyan mb-6">일시 정지</h2>
+      <div class="space-y-3">
+        <button id="btnResume" class="cyber-btn w-full py-3.5 rounded-2xl font-bold text-base text-white cursor-pointer">
+          계속 플레이 (RESUME)
+        </button>
+        <button id="btnRestartFromPause" class="w-full py-3 rounded-2xl font-semibold text-sm bg-slate-800/80 hover:bg-slate-700/80 border border-slate-600 text-slate-200 transition cursor-pointer">
+          처음부터 다시 시작
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Over Overlay -->
+  <div id="gameOverOverlay" class="fixed inset-0 z-30 hidden items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md">
+    <div class="cyber-panel rounded-3xl max-w-md w-full p-6 sm:p-8 text-center border-rose-500/40">
+      <div class="inline-block px-3 py-1 rounded-full bg-rose-500/20 border border-rose-400/40 text-rose-300 text-xs font-cyber tracking-widest mb-2">
+        NEURAL LINK SEVERED
+      </div>
+      <h2 class="text-3xl sm:text-4xl font-black font-cyber text-rose-400 neon-text-magenta mb-1">
+        MISSION FAILED
+      </h2>
+      <p id="newRecordBanner" class="hidden text-xs sm:text-sm font-bold text-amber-300 neon-text-gold mb-4">
+        ★ NEW SYNAPSE RECORD! 최고 기록 경신! ★
+      </p>
+      <p id="normalSubBanner" class="text-xs sm:text-sm text-slate-300 mb-5">
+        드론이 대뇌 피질의 공격을 견디지 못했습니다.
+      </p>
+
+      <!-- Final Stats Grid -->
+      <div class="grid grid-cols-2 gap-3 mb-6">
+        <div class="bg-slate-900/80 border border-cyan-500/25 rounded-2xl p-3">
+          <div class="text-[11px] text-slate-400 font-cyber">FINAL SCORE</div>
+          <div id="finalScore" class="text-2xl font-black font-cyber text-cyan-300 mt-0.5">0</div>
+        </div>
+        <div class="bg-slate-900/80 border border-amber-500/25 rounded-2xl p-3">
+          <div class="text-[11px] text-slate-400 font-cyber">BEST SCORE</div>
+          <div id="finalBestScore" class="text-2xl font-black font-cyber text-amber-300 mt-0.5">0</div>
+        </div>
+        <div class="bg-slate-900/80 border border-purple-500/25 rounded-2xl p-3">
+          <div class="text-[11px] text-slate-400">생존 시간 / 도달 레벨</div>
+          <div class="text-base sm:text-lg font-bold font-cyber text-purple-300 mt-0.5">
+            <span id="finalTime">0.0s</span> · <span id="finalLevel">LV.1</span>
+          </div>
+        </div>
+        <div class="bg-slate-900/80 border border-emerald-500/25 rounded-2xl p-3">
+          <div class="text-[11px] text-slate-400">벽면 흡수 회피 수</div>
+          <div id="finalDodged" class="text-base sm:text-lg font-bold font-cyber text-emerald-300 mt-0.5">0</div>
+        </div>
+      </div>
+
+      <button id="btnReplay" class="cyber-btn w-full py-4 rounded-2xl text-lg font-black font-cyber tracking-wider text-white cursor-pointer">
+        다시 도전하기 // REPLAY
+      </button>
+    </div>
+  </div>
+
+  <script>
+    /**
+     * ============================================================================
+     * NEURAL DRONE // 뇌 속 드론 회피 작전
+     * Single-File Self-Contained HTML5 Canvas Cybernetic Arcade Game
+     * ============================================================================
+     */
+
+    // ----------------------------------------------------------------------------
+    // 1. PROCEDURAL WEB AUDIO SYNTHESIZER (Zero External Audio Dependencies)
+    // ----------------------------------------------------------------------------
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+        this.masterGain = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) return;
+          this.ctx = new AudioContext();
+          this.masterGain = this.ctx.createGain();
+          this.masterGain.gain.value = this.muted ? 0 : 0.32;
+          this.masterGain.connect(this.ctx.destination);
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      toggleMute() {
+        this.muted = !this.muted;
+        if (this.masterGain && this.ctx) {
+          this.masterGain.gain.setTargetAtTime(this.muted ? 0 : 0.32, this.ctx.currentTime, 0.02);
+        }
+        return this.muted;
+      }
+
+      playLaserFire(isBomb = false) {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        if (isBomb) {
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(190, now);
+          osc.frequency.exponentialRampToValueAtTime(58, now + 0.24);
+          gain.gain.setValueAtTime(0.28, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+        } else {
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(760, now);
+          osc.frequency.exponentialRampToValueAtTime(180, now + 0.13);
+          gain.gain.setValueAtTime(0.16, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+        }
+
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start(now);
+        osc.stop(now + (isBomb ? 0.26 : 0.15));
+      }
+
+      playWallAbsorb() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(520 + Math.random() * 240, now);
+        osc.frequency.exponentialRampToValueAtTime(980, now + 0.08);
+        gain.gain.setValueAtTime(0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start(now);
+        osc.stop(now + 0.095);
+      }
+
+      playShieldPickup() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          const start = now + idx * 0.055;
+          osc.frequency.setValueAtTime(freq, start);
+          osc.frequency.exponentialRampToValueAtTime(freq * 1.03, start + 0.28);
+
+          gain.gain.setValueAtTime(0.001, start);
+          gain.gain.linearRampToValueAtTime(0.22, start + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.32);
+
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+          osc.start(start);
+          osc.stop(start + 0.34);
+        });
+      }
+
+      playShieldBlock() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc1 = this.ctx.createOscillator();
+        const osc2 = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc1.type = 'sawtooth';
+        osc2.type = 'sine';
+        osc1.frequency.setValueAtTime(320, now);
+        osc1.frequency.exponentialRampToValueAtTime(920, now + 0.22);
+        osc2.frequency.setValueAtTime(640, now);
+        osc2.frequency.exponentialRampToValueAtTime(140, now + 0.28);
+
+        gain.gain.setValueAtTime(0.32, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(this.masterGain);
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 0.31);
+        osc2.stop(now + 0.31);
+      }
+
+      playExplosion() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        // White noise burst + low sub drop
+        const bufferSize = this.ctx.sampleRate * 0.45;
+        const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (this.ctx.sampleRate * 0.14));
+        }
+
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = buffer;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(900, now);
+        filter.frequency.exponentialRampToValueAtTime(110, now + 0.42);
+
+        const gain = this.ctx.createGain();
+        gain.gain.setValueAtTime(0.45, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.masterGain);
+        noise.start(now);
+      }
+
+      playLevelUp() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const chord = [440, 554.37, 659.25, 880, 1108.73];
+        chord.forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          const t = now + i * 0.06;
+          osc.frequency.setValueAtTime(freq, t);
+          gain.gain.setValueAtTime(0.001, t);
+          gain.gain.linearRampToValueAtTime(0.24, t + 0.03);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.48);
+
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+          osc.start(t);
+          osc.stop(t + 0.5);
+        });
+      }
+    }
+
+    // ----------------------------------------------------------------------------
+    // 2. ANATOMICAL SIDE-PROFILE BRAIN GEOMETRY & BOUNDARY ENGINE
+    // ----------------------------------------------------------------------------
+    /**
+     * Generates a high-resolution, anatomically recognizable side-profile human brain polygon
+     * in normalized coordinates [-1, 1], facing LEFT (Frontal lobe on left, Occipital on right,
+     * Cerebellum at bottom-right, Brainstem descending bottom-center-right).
+     */
+    function buildBrainContourPoints() {
+      // Control points outlining a sleek anatomical side-profile of the human brain
+      // Facing Left: Frontal Lobe (-X), Parietal/Top (-Y), Occipital (+X), Cerebellum (+X,+Y), Brainstem (+Y)
+      const rawAnchors = [
+        // Frontal Pole (Leftmost front)
+        [-0.94,  0.04],
+        [-0.95, -0.14],
+        [-0.89, -0.34],
+        [-0.76, -0.53],
+        [-0.57, -0.69],
+        // Superior Frontal & Parietal Lobe (Top arch with subtle gyri undulations)
+        [-0.35, -0.80],
+        [-0.12, -0.86],
+        [ 0.12, -0.86],
+        [ 0.36, -0.81],
+        [ 0.58, -0.71],
+        // Occipital Lobe (Back right curve)
+        [ 0.77, -0.55],
+        [ 0.90, -0.35],
+        [ 0.96, -0.12],
+        [ 0.94,  0.10],
+        [ 0.84,  0.27],
+        // Notch between Occipital Lobe and Cerebellum
+        [ 0.68,  0.34],
+        // Cerebellum (Distinctive lower-back bulge)
+        [ 0.74,  0.47],
+        [ 0.66,  0.63],
+        [ 0.48,  0.71],
+        [ 0.30,  0.67],
+        // Brainstem (Pons & Medulla descending gently)
+        [ 0.24,  0.83],
+        [ 0.12,  0.86],
+        [ 0.05,  0.68],
+        // Temporal Lobe underside & Orbital Frontal base
+        [-0.08,  0.54],
+        [-0.28,  0.52],
+        [-0.48,  0.46],
+        [-0.64,  0.35],
+        [-0.82,  0.24],
+        [-0.91,  0.15]
+      ];
+
+      // Catmull-Rom spline interpolation to produce a silky smooth closed perimeter + cortical gyri waves
+      const points = [];
+      const n = rawAnchors.length;
+      const subdivisions = 12;
+
+      for (let i = 0; i < n; i++) {
+        const p0 = rawAnchors[(i - 1 + n) % n];
+        const p1 = rawAnchors[i];
+        const p2 = rawAnchors[(i + 1) % n];
+        const p3 = rawAnchors[(i + 2) % n];
+
+        for (let s = 0; s < subdivisions; s++) {
+          const t = s / subdivisions;
+          const t2 = t * t;
+          const t3 = t2 * t;
+
+          let x = 0.5 * (
+            (2 * p1[0]) +
+            (-p0[0] + p2[0]) * t +
+            (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
+            (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3
+          );
+          let y = 0.5 * (
+            (2 * p1[1]) +
+            (-p0[1] + p2[1]) * t +
+            (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
+            (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3
+          );
+
+          // Add subtle cortical gyri ripples along the upper cerebrum perimeter
+          const globalAngle = Math.atan2(y, x);
+          if (y < 0.25) {
+            const ripple = Math.sin(globalAngle * 18) * 0.014;
+            const len = Math.hypot(x, y) || 1;
+            x += (x / len) * ripple;
+            y += (y / len) * ripple;
+          }
+
+          points.push({ x, y });
+        }
+      }
+      return points;
+    }
+
+    // Ray-casting point-in-polygon check
+    function isPointInPolygon(px, py, poly) {
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i].x, yi = poly[i].y;
+        const xj = poly[j].x, yj = poly[j].y;
+        const intersect = ((yi > py) !== (yj > py)) &&
+          (px < (xj - xi) * (py - yi) / ((yj - yi) || 1e-9) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    // Find closest point on polygon boundary to (px, py)
+    function closestPointOnPolygon(px, py, poly) {
+      let minDistSq = Infinity;
+      let bestX = px;
+      let bestY = py;
+      let bestNx = 0;
+      let bestNy = -1;
+
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i];
+        const b = poly[(i + 1) % poly.length];
+        const abx = b.x - a.x;
+        const aby = b.y - a.y;
+        const abLenSq = abx * abx + aby * aby || 1e-9;
+        let t = ((px - a.x) * abx + (py - a.y) * aby) / abLenSq;
+        t = Math.max(0, Math.min(1, t));
+
+        const cx = a.x + t * abx;
+        const cy = a.y + t * aby;
+        const dx = px - cx;
+        const dy = py - cy;
+        const distSq = dx * dx + dy * dy;
+
+        if (distSq < minDistSq) {
+          minDistSq = distSq;
+          bestX = cx;
+          bestY = cy;
+          // Inward normal for clockwise polygon
+          const len = Math.hypot(abx, aby) || 1;
+          bestNx = -aby / len;
+          bestNy = abx / len;
+        }
+      }
+
+      return {
+        x: bestX,
+        y: bestY,
+        dist: Math.sqrt(minDistSq),
+        nx: bestNx,
+        ny: bestNy
+      };
+    }
+
+    // ----------------------------------------------------------------------------
+    // 3. MAIN GAME ENGINE & STATE CONTROLLER
+    // ----------------------------------------------------------------------------
+    class NeuralDroneGame {
+      constructor() {
+        this.canvas = document.getElementById('gameCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.sound = new SoundEngine();
+
+        // Normalized brain geometry
+        this.normBrainPoly = buildBrainContourPoints();
+        this.worldBrainPoly = [];
+        this.innerSafePoly = []; // Slightly inset boundary for drone collision
+
+        // Brain center and scale in screen pixels
+        this.brainCenter = { x: 0, y: 0 };
+        this.brainScale = { rx: 320, ry: 250 };
+
+        // 4 Cortical Portals (상, 하, 좌, 우)
+        this.portals = [];
+
+        // Decorative internal neural folds (sulci) & synaptic pathways
+        this.sulciCurves = [];
+        this.synapseNodes = [];
+        this.synapsePulses = [];
+        this.bgStars = [];
+
+        // Game state: 'START' | 'PLAYING' | 'PAUSED' | 'GAMEOVER'
+        this.state = 'START';
+        this.score = 0;
+        this.bestScore = parseInt(localStorage.getItem('neural_drone_best_v1') || '0', 10);
+        this.level = 1;
+        this.levelProgress = 0; // 0 to 100
+        this.survivalTime = 0;
+        this.dodgedCount = 0;
+
+        // Player Drone State
+        this.drone = {
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          radius: 15,
+          hp: 3,
+          maxHp: 3,
+          shieldActive: false,
+          shieldTimer: 0,
+          shieldMaxDuration: 14, // seconds (or until absorbing 1 hit)
+          invulnTimer: 0,
+          tilt: 0,
+          rotorAngle: 0,
+          trail: []
+        };
+
+        // Entities
+        this.projectiles = []; // bullets & bombs
+        this.items = [];       // shield power-ups
+        this.particles = [];   // sparks, explosions, wall ripples
+        this.shockwaves = [];  // expanding rings
+        this.floatingTexts = [];
+
+        // Timers
+        this.spawnTimer = 0;
+        this.itemSpawnTimer = 6.5;
+        this.levelUpBannerTimer = 0;
+        this.screenShake = 0;
+        this.globalTime = 0;
+
+        // Input tracking
+        this.keys = {};
+        this.pointerActive = false;
+        this.pointerPos = { x: 0, y: 0 };
+
+        // Bindings & Initialization
+        this.bindEvents();
+        this.handleResize();
+        this.updateHudUI();
+        this.lastFrameTime = performance.now();
+        requestAnimationFrame((t) => this.loop(t));
+      }
+
+      bindEvents() {
+        window.addEventListener('resize', () => this.handleResize());
+
+        window.addEventListener('keydown', (e) => {
+          this.keys[e.code] = true;
+          if (e.code === 'KeyP' || e.code === 'Escape') {
+            if (this.state === 'PLAYING') this.pauseGame();
+            else if (this.state === 'PAUSED') this.resumeGame();
+          }
+          if ((e.code === 'Space' || e.code === 'Enter') && (this.state === 'START' || this.state === 'GAMEOVER')) {
+            this.startGame();
+          }
+        });
+
+        window.addEventListener('keyup', (e) => {
+          this.keys[e.code] = false;
+        });
+
+        // Touch & Mouse direct flight support inside canvas
+        const startPointer = (clientX, clientY) => {
+          if (this.state !== 'PLAYING') return;
+          this.pointerActive = true;
+          this.pointerPos.x = clientX;
+          this.pointerPos.y = clientY;
+        };
+
+        const movePointer = (clientX, clientY) => {
+          if (!this.pointerActive) return;
+          this.pointerPos.x = clientX;
+          this.pointerPos.y = clientY;
+        };
+
+        const endPointer = () => {
+          this.pointerActive = false;
+        };
+
+        this.canvas.addEventListener('mousedown', (e) => startPointer(e.clientX, e.clientY));
+        window.addEventListener('mousemove', (e) => movePointer(e.clientX, e.clientY));
+        window.addEventListener('mouseup', endPointer);
+
+        this.canvas.addEventListener('touchstart', (e) => {
+          if (e.touches.length > 0) {
+            startPointer(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }, { passive: true });
+
+        this.canvas.addEventListener('touchmove', (e) => {
+          if (e.touches.length > 0) {
+            movePointer(e.touches[0].clientX, e.touches[0].clientY);
+          }
+        }, { passive: true });
+
+        this.canvas.addEventListener('touchend', endPointer);
+
+        // UI Buttons
+        document.getElementById('btnStart').addEventListener('click', () => this.startGame());
+        document.getElementById('btnReplay').addEventListener('click', () => this.startGame());
+        document.getElementById('btnPause').addEventListener('click', () => {
+          if (this.state === 'PLAYING') this.pauseGame();
+          else if (this.state === 'PAUSED') this.resumeGame();
+        });
+        document.getElementById('btnResume').addEventListener('click', () => this.resumeGame());
+        document.getElementById('btnRestartFromPause').addEventListener('click', () => this.startGame());
+
+        document.getElementById('btnSound').addEventListener('click', () => {
+          this.sound.init();
+          const muted = this.sound.toggleMute();
+          document.getElementById('iconSoundOn').classList.toggle('hidden', muted);
+          document.getElementById('iconSoundOff').classList.toggle('hidden', !muted);
+        });
+      }
+
+      handleResize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+
+        this.canvas.width = w * dpr;
+        this.canvas.height = h * dpr;
+        this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        this.width = w;
+        this.height = h;
+
+        // Calculate responsive brain arena size leaving comfortable HUD breathing room
+        const topOffset = h < 640 ? 48 : 34;
+        this.brainCenter.x = w * 0.5;
+        this.brainCenter.y = h * 0.5 + topOffset;
+
+        const maxRx = Math.min(w * 0.45, 520);
+        const maxRy = Math.min((h - topOffset * 1.5) * 0.44, 390);
+        // Maintain balanced anatomical aspect ratio (~1.24 : 1)
+        const rx = Math.max(150, Math.min(maxRx, maxRy * 1.24));
+        const ry = rx / 1.24;
+
+        this.brainScale.rx = rx;
+        this.brainScale.ry = ry;
+        this.drone.radius = Math.max(11, Math.min(16, rx * 0.036));
+
+        // Rebuild world-space brain polygon & inset safe drone boundary
+        this.worldBrainPoly = this.normBrainPoly.map(p => ({
+          x: this.brainCenter.x + p.x * rx,
+          y: this.brainCenter.y + p.y * ry
+        }));
+
+        const insetFactor = Math.max(0.86, 1 - (this.drone.radius + 10) / rx);
+        this.innerSafePoly = this.normBrainPoly.map(p => ({
+          x: this.brainCenter.x + p.x * rx * insetFactor,
+          y: this.brainCenter.y + p.y * ry * insetFactor
+        }));
+
+        // Configure the 4 Cerebral Cortex Portals (상, 하, 좌, 우) right on the brain contour
+        this.setupFourPortals();
+        this.buildInternalBrainDetails();
+
+        // Keep drone centered if not actively playing
+        if (this.state === 'START') {
+          this.drone.x = this.brainCenter.x - rx * 0.08;
+          this.drone.y = this.brainCenter.y - ry * 0.05;
+        } else {
+          this.clampDroneInsideBrain();
+        }
+      }
+
+      setupFourPortals() {
+        // Find exact points on the brain boundary in 4 cardinal directions (상, 하, 좌, 우)
+        const targets = [
+          { id: 'TOP',    label: '상부 피질', angle: -Math.PI / 2, color: '#22d3ee' }, // 상 (Top Parietal)
+          { id: 'BOTTOM', label: '하부 기저', angle:  Math.PI / 2, color: '#a855f7' }, // 하 (Bottom Temporal/Pons)
+          { id: 'LEFT',   label: '전두엽',    angle:  Math.PI,     color: '#f43f5e' }, // 좌 (Left Frontal Lobe)
+          { id: 'RIGHT',  label: '후두엽',    angle:  0,           color: '#38bdf8' }  // 우 (Right Occipital Lobe)
+        ];
+
+        const prevPortals = this.portals || [];
+
+        this.portals = targets.map((t, idx) => {
+          // Ray from brain center along t.angle to intersect worldBrainPoly
+          const dirX = Math.cos(t.angle);
+          const dirY = Math.sin(t.angle);
+          let bestPt = {
+            x: this.brainCenter.x + dirX * this.brainScale.rx * 0.85,
+            y: this.brainCenter.y + dirY * this.brainScale.ry * 0.85
+          };
+          let bestDot = -Infinity;
+
+          for (const pt of this.worldBrainPoly) {
+            const vx = pt.x - this.brainCenter.x;
+            const vy = pt.y - this.brainCenter.y;
+            const len = Math.hypot(vx, vy) || 1;
+            const align = (vx / len) * dirX + (vy / len) * dirY;
+            if (align > bestDot) {
+              bestDot = align;
+              bestPt = { x: pt.x, y: pt.y };
+            }
+          }
+
+          // Inward firing normal pointing toward the brain cavity center
+          const inX = this.brainCenter.x - bestPt.x;
+          const inY = this.brainCenter.y - bestPt.y;
+          const inLen = Math.hypot(inX, inY) || 1;
+
+          return {
+            id: t.id,
+            label: t.label,
+            x: bestPt.x,
+            y: bestPt.y,
+            inwardAngle: Math.atan2(inY / inLen, inX / inLen),
+            color: t.color,
+            flashTimer: prevPortals[idx]?.flashTimer || 0,
+            chargeTimer: prevPortals[idx]?.chargeTimer || 0,
+            pulsePhase: idx * 1.57
+          };
+        });
+      }
+
+      buildInternalBrainDetails() {
+        const { x: cx, y: cy } = this.brainCenter;
+        const { rx, ry } = this.brainScale;
+
+        // Anatomical cortical folds (Lateral sulcus / Sylvian fissure, Central sulcus, Cerebellar folia)
+        this.sulciCurves = [
+          // Sylvian Fissure (Lateral sulcus separating frontal & temporal lobes)
+          [
+            { x: cx - rx * 0.62, y: cy + ry * 0.14 },
+            { x: cx - rx * 0.34, y: cy + ry * 0.08 },
+            { x: cx - rx * 0.05, y: cy - ry * 0.03 },
+            { x: cx + rx * 0.22, y: cy - ry * 0.14 }
+          ],
+          // Central Sulcus (Rolandic fissure descending from top)
+          [
+            { x: cx + rx * 0.04, y: cy - ry * 0.82 },
+            { x: cx - rx * 0.03, y: cy - ry * 0.52 },
+            { x: cx - rx * 0.11, y: cy - ry * 0.24 }
+          ],
+          // Precentral / Frontal fold
+          [
+            { x: cx - rx * 0.44, y: cy - ry * 0.72 },
+            { x: cx - rx * 0.48, y: cy - ry * 0.42 },
+            { x: cx - rx * 0.36, y: cy - ry * 0.18 }
+          ],
+          // Parieto-occipital fold
+          [
+            { x: cx + rx * 0.52, y: cy - ry * 0.68 },
+            { x: cx + rx * 0.45, y: cy - ry * 0.36 },
+            { x: cx + rx * 0.56, y: cy - ry * 0.12 }
+          ],
+          // Corpus Callosum inner arch
+          [
+            { x: cx - rx * 0.32, y: cy + ry * 0.02 },
+            { x: cx - rx * 0.10, y: cy - ry * 0.16 },
+            { x: cx + rx * 0.18, y: cy - ry * 0.14 },
+            { x: cx + rx * 0.34, y: cy + ry * 0.04 }
+          ],
+          // Cerebellum horizontal folia lines
+          [
+            { x: cx + rx * 0.34, y: cy + ry * 0.45 },
+            { x: cx + rx * 0.52, y: cy + ry * 0.43 },
+            { x: cx + rx * 0.69, y: cy + ry * 0.46 }
+          ],
+          [
+            { x: cx + rx * 0.33, y: cy + ry * 0.56 },
+            { x: cx + rx * 0.50, y: cy + ry * 0.55 },
+            { x: cx + rx * 0.65, y: cy + ry * 0.57 }
+          ]
+        ];
+
+        // Generate internal synaptic network nodes strictly inside the brain
+        this.synapseNodes = [];
+        const targetCount = 26;
+        let attempts = 0;
+        while (this.synapseNodes.length < targetCount && attempts < 400) {
+          attempts++;
+          const nx = cx + (Math.random() * 1.7 - 0.85) * rx;
+          const ny = cy + (Math.random() * 1.5 - 0.75) * ry;
+          if (isPointInPolygon(nx, ny, this.innerSafePoly)) {
+            this.synapseNodes.push({
+              x: nx,
+              y: ny,
+              radius: 1.8 + Math.random() * 2.2,
+              phase: Math.random() * Math.PI * 2
+            });
+          }
+        }
+
+        // Background ambient neural dust
+        this.bgStars = Array.from({ length: 55 }, () => ({
+          x: Math.random() * this.width,
+          y: Math.random() * this.height,
+          r: 0.7 + Math.random() * 1.8,
+          speed: 4 + Math.random() * 12,
+          alpha: 0.15 + Math.random() * 0.45
+        }));
+      }
+
+      // --------------------------------------------------------------------------
+      // GAME LIFECYCLE CONTROLS
+      // --------------------------------------------------------------------------
+      startGame() {
+        this.sound.init();
+
+        this.state = 'PLAYING';
+        this.score = 0;
+        this.level = 1;
+        this.levelProgress = 0;
+        this.survivalTime = 0;
+        this.dodgedCount = 0;
+
+        this.drone.x = this.brainCenter.x - this.brainScale.rx * 0.05;
+        this.drone.y = this.brainCenter.y - this.brainScale.ry * 0.05;
+        this.drone.vx = 0;
+        this.drone.vy = 0;
+        this.drone.hp = 3;
+        this.drone.shieldActive = false;
+        this.drone.shieldTimer = 0;
+        this.drone.invulnTimer = 1.2;
+        this.drone.trail = [];
+
+        this.projectiles = [];
+        this.items = [];
+        this.particles = [];
+        this.shockwaves = [];
+        this.floatingTexts = [];
+
+        this.spawnTimer = 0.6;
+        this.itemSpawnTimer = 5.5;
+        this.levelUpBannerTimer = 0;
+        this.screenShake = 0;
+
+        document.getElementById('startOverlay').classList.add('hidden');
+        document.getElementById('pauseOverlay').classList.add('hidden');
+        document.getElementById('pauseOverlay').classList.remove('flex');
+        document.getElementById('gameOverOverlay').classList.add('hidden');
+        document.getElementById('gameOverOverlay').classList.remove('flex');
+
+        this.spawnShockwave(this.drone.x, this.drone.y, '#22d3ee', 95);
+        this.addFloatingText(this.drone.x, this.drone.y - 28, 'SYSTEM ONLINE', '#22d3ee');
+        this.updateHudUI();
+      }
+
+      pauseGame() {
+        if (this.state !== 'PLAYING') return;
+        this.state = 'PAUSED';
+        const overlay = document.getElementById('pauseOverlay');
+        overlay.classList.remove('hidden');
+        overlay.classList.add('flex');
+      }
+
+      resumeGame() {
+        if (this.state !== 'PAUSED') return;
+        this.state = 'PLAYING';
+        const overlay = document.getElementById('pauseOverlay');
+        overlay.classList.add('hidden');
+        overlay.classList.remove('flex');
+        this.lastFrameTime = performance.now();
+      }
+
+      triggerGameOver() {
+        this.state = 'GAMEOVER';
+        this.sound.playExplosion();
+        this.screenShake = 22;
+
+        // Massive drone core explosion
+        this.spawnExplosionParticles(this.drone.x, this.drone.y, '#f43f5e', 48);
+        this.spawnShockwave(this.drone.x, this.drone.y, '#f43f5e', 160);
+
+        const finalScoreInt = Math.floor(this.score);
+        let isNewBest = false;
+        if (finalScoreInt > this.bestScore) {
+          this.bestScore = finalScoreInt;
+          localStorage.setItem('neural_drone_best_v1', String(this.bestScore));
+          isNewBest = true;
+        }
+
+        document.getElementById('finalScore').textContent = finalScoreInt.toLocaleString();
+        document.getElementById('finalBestScore').textContent = this.bestScore.toLocaleString();
+        document.getElementById('finalTime').textContent = `${this.survivalTime.toFixed(1)}초`;
+        document.getElementById('finalLevel').textContent = `LV.${this.level}`;
+        document.getElementById('finalDodged').textContent = `${this.dodgedCount}개`;
+
+        document.getElementById('newRecordBanner').classList.toggle('hidden', !isNewBest);
+        document.getElementById('normalSubBanner').classList.toggle('hidden', isNewBest);
+
+        setTimeout(() => {
+          if (this.state === 'GAMEOVER') {
+            const overlay = document.getElementById('gameOverOverlay');
+            overlay.classList.remove('hidden');
+            overlay.classList.add('flex');
+          }
+        }, 550);
+
+        this.updateHudUI();
+      }
+
+      // --------------------------------------------------------------------------
+      // MAIN UPDATE LOOP
+      // --------------------------------------------------------------------------
+      loop(timestamp) {
+        const rawDt = (timestamp - this.lastFrameTime) / 1000;
+        this.lastFrameTime = timestamp;
+        const dt = Math.min(rawDt, 0.05); // Cap delta time for tab switches
+
+        this.globalTime += dt;
+        this.updateAmbientEffects(dt);
+
+        if (this.state === 'PLAYING') {
+          this.updatePlaying(dt);
+        } else {
+          // Gently hover drone in Start / Game Over background
+          this.drone.rotorAngle += dt * 26;
+          if (this.state === 'START') {
+            this.drone.y = (this.brainCenter.y - this.brainScale.ry * 0.05) + Math.sin(this.globalTime * 3) * 6;
+          }
+        }
+
+        this.render();
+        requestAnimationFrame((t) => this.loop(t));
+      }
+
+      updateAmbientEffects(dt) {
+        // Decay screen shake
+        if (this.screenShake > 0) {
+          this.screenShake = Math.max(0, this.screenShake - dt * 48);
+        }
+
+        // Portal pulse decay
+        for (const p of this.portals) {
+          p.pulsePhase += dt * 3.5;
+          if (p.flashTimer > 0) p.flashTimer = Math.max(0, p.flashTimer - dt);
+          if (p.chargeTimer > 0) p.chargeTimer = Math.max(0, p.chargeTimer - dt);
+        }
+
+        // Spawn occasional synaptic spark pulses along brain pathways
+        if (Math.random() < dt * 4.5 && this.synapseNodes.length >= 2) {
+          const a = this.synapseNodes[Math.floor(Math.random() * this.synapseNodes.length)];
+          const b = this.synapseNodes[Math.floor(Math.random() * this.synapseNodes.length)];
+          if (a !== b && Math.hypot(a.x - b.x, a.y - b.y) < this.brainScale.rx * 0.65) {
+            this.synapsePulses.push({
+              x1: a.x, y1: a.y,
+              x2: b.x, y2: b.y,
+              progress: 0,
+              speed: 1.6 + Math.random() * 1.6
+            });
+          }
+        }
+
+        for (let i = this.synapsePulses.length - 1; i >= 0; i--) {
+          const sp = this.synapsePulses[i];
+          sp.progress += dt * sp.speed;
+          if (sp.progress >= 1) this.synapsePulses.splice(i, 1);
+        }
+
+        // Update particles
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+          const pt = this.particles[i];
+          pt.x += pt.vx * dt;
+          pt.y += pt.vy * dt;
+          pt.vx *= Math.pow(0.18, dt);
+          pt.vy *= Math.pow(0.18, dt);
+          pt.life -= dt;
+          if (pt.life <= 0) this.particles.splice(i, 1);
+        }
+
+        // Update shockwaves
+        for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+          const sw = this.shockwaves[i];
+          sw.radius += (sw.maxRadius - sw.radius) * Math.min(1, dt * 8.5);
+          sw.life -= dt;
+          if (sw.life <= 0) this.shockwaves.splice(i, 1);
+        }
+
+        // Update floating texts
+        for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+          const ft = this.floatingTexts[i];
+          ft.y -= 28 * dt;
+          ft.life -= dt;
+          if (ft.life <= 0) this.floatingTexts.splice(i, 1);
+        }
+      }
+
+      updatePlaying(dt) {
+        this.survivalTime += dt;
+        this.score += dt * (15 + this.level * 5);
+
+        // Level progression based on time + dodged projectiles
+        const xpGain = dt * (8.5 / (1 + (this.level - 1) * 0.12));
+        this.levelProgress += xpGain;
+        if (this.levelProgress >= 100) {
+          this.levelProgress -= 100;
+          this.advanceLevel();
+        }
+
+        if (this.levelUpBannerTimer > 0) {
+          this.levelUpBannerTimer = Math.max(0, this.levelUpBannerTimer - dt);
+        }
+
+        this.updateDrone(dt);
+        this.updateSpawners(dt);
+        this.updateProjectiles(dt);
+        this.updateItems(dt);
+        this.updateHudUI();
+      }
+
+      advanceLevel() {
+        this.level++;
+        this.levelUpBannerTimer = 2.6;
+        this.sound.playLevelUp();
+        this.screenShake = 8;
+
+        // Visual shockwave across the brain
+        this.spawnShockwave(this.brainCenter.x, this.brainCenter.y, '#a855f7', this.brainScale.rx * 1.15);
+        this.addFloatingText(this.drone.x, this.drone.y - 34, `LEVEL ${this.level} UP!`, '#e879f9');
+
+        // Flash all 4 portals simultaneously
+        this.portals.forEach(p => {
+          p.flashTimer = 0.6;
+        });
+      }
+
+      updateDrone(dt) {
+        const d = this.drone;
+        d.rotorAngle += dt * 38;
+        if (d.invulnTimer > 0) d.invulnTimer = Math.max(0, d.invulnTimer - dt);
+
+        if (d.shieldActive) {
+          d.shieldTimer -= dt;
+          if (d.shieldTimer <= 0) {
+            d.shieldActive = false;
+            d.shieldTimer = 0;
+            this.addFloatingText(d.x, d.y - 26, '방어막 종료', '#94a3b8');
+          }
+        }
+
+        // Gather directional input (WASD / Arrow Keys)
+        let ix = 0;
+        let iy = 0;
+        if (this.keys['ArrowLeft'] || this.keys['KeyA']) ix -= 1;
+        if (this.keys['ArrowRight'] || this.keys['KeyD']) ix += 1;
+        if (this.keys['ArrowUp'] || this.keys['KeyW']) iy -= 1;
+        if (this.keys['ArrowDown'] || this.keys['KeyS']) iy += 1;
+
+        // Touch / Mouse drag guidance if no keyboard pressed
+        if (ix === 0 && iy === 0 && this.pointerActive) {
+          const dx = this.pointerPos.x - d.x;
+          const dy = this.pointerPos.y - d.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 6) {
+            ix = dx / dist;
+            iy = dy / dist;
+          }
+        } else if (ix !== 0 && iy !== 0) {
+          const inv = 1 / Math.SQRT2;
+          ix *= inv;
+          iy *= inv;
+        }
+
+        // Responsive acceleration & smooth damping
+        const maxSpeed = 335 + Math.min(85, (this.level - 1) * 10);
+        const accel = 2400;
+        const friction = 8.5;
+
+        d.vx += ix * accel * dt;
+        d.vy += iy * accel * dt;
+
+        d.vx -= d.vx * friction * dt;
+        d.vy -= d.vy * friction * dt;
+
+        const speed = Math.hypot(d.vx, d.vy);
+        if (speed > maxSpeed) {
+          d.vx = (d.vx / speed) * maxSpeed;
+          d.vy = (d.vy / speed) * maxSpeed;
+        }
+
+        d.x += d.vx * dt;
+        d.y += d.vy * dt;
+
+        // Smooth banking tilt based on horizontal velocity
+        const targetTilt = (d.vx / maxSpeed) * 0.34;
+        d.tilt += (targetTilt - d.tilt) * Math.min(1, dt * 14);
+
+        // Enforce strict brain inner cavity boundary
+        this.clampDroneInsideBrain();
+
+        // Record thruster motion trail
+        d.trail.push({ x: d.x, y: d.y, alpha: 0.7 });
+        if (d.trail.length > 14) d.trail.shift();
+        for (const t of d.trail) t.alpha *= 0.88;
+      }
+
+      clampDroneInsideBrain() {
+        const d = this.drone;
+        if (!isPointInPolygon(d.x, d.y, this.innerSafePoly)) {
+          const closest = closestPointOnPolygon(d.x, d.y, this.innerSafePoly);
+          d.x = closest.x;
+          d.y = closest.y;
+
+          // Slide smoothly along the inner cortical membrane without sticking
+          const pushX = this.brainCenter.x - d.x;
+          const pushY = this.brainCenter.y - d.y;
+          const len = Math.hypot(pushX, pushY) || 1;
+          const nx = pushX / len;
+          const ny = pushY / len;
+          const vn = d.vx * nx + d.vy * ny;
+          if (vn < 0) {
+            d.vx -= vn * nx;
+            d.vy -= vn * ny;
+          }
+        }
+      }
+
+      updateSpawners(dt) {
+        // Difficulty scaling formula
+        const baseInterval = Math.max(0.32, 1.35 * Math.pow(0.89, this.level - 1));
+        this.spawnTimer -= dt;
+
+        if (this.spawnTimer <= 0) {
+          this.spawnTimer = baseInterval * (0.82 + Math.random() * 0.36);
+
+          // Number of portals firing simultaneously scales gently with level
+          let volleyCount = 1;
+          if (this.level >= 3 && Math.random() < 0.35) volleyCount = 2;
+          if (this.level >= 6 && Math.random() < 0.25) volleyCount = 3;
+          if (this.level >= 9 && Math.random() < 0.15) volleyCount = 4;
+
+          const shuffledPortals = [...this.portals].sort(() => Math.random() - 0.5);
+          for (let i = 0; i < volleyCount; i++) {
+            this.fireFromPortal(shuffledPortals[i]);
+          }
+        }
+
+        // Shield Power-Up Item Spawner
+        this.itemSpawnTimer -= dt;
+        if (this.itemSpawnTimer <= 0) {
+          this.itemSpawnTimer = Math.max(8.5, 13.5 - this.level * 0.35);
+          if (this.items.length < 2) {
+            const portal = this.portals[Math.floor(Math.random() * this.portals.length)];
+            this.spawnShieldItem(portal);
+          }
+        }
+      }
+
+      fireFromPortal(portal) {
+        portal.flashTimer = 0.38;
+
+        // Decide Bullet vs Bomb (bombs appear more frequently as levels rise)
+        const bombChance = Math.min(0.45, 0.20 + (this.level - 1) * 0.03);
+        const isBomb = Math.random() < bombChance;
+
+        // Aim partially toward drone and partially spread across the brain cavity
+        const toDroneAngle = Math.atan2(this.drone.y - portal.y, this.drone.x - portal.x);
+        const aimWeight = Math.min(0.75, 0.32 + (this.level - 1) * 0.045);
+
+        // Blend portal's natural inward angle with aimed angle toward drone
+        const spread = (Math.random() - 0.5) * 0.72;
+        let fireAngle = portal.inwardAngle + spread;
+        if (Math.random() < aimWeight) {
+          fireAngle = toDroneAngle + (Math.random() - 0.5) * 0.34;
+        }
+
+        const speedMultiplier = 1 + (this.level - 1) * 0.095;
+        const speed = isBomb
+          ? (145 + Math.random() * 45) * speedMultiplier
+          : (225 + Math.random() * 65) * speedMultiplier;
+
+        // Slight curve/homing drift at higher levels for bullets
+        const turnRate = (!isBomb && this.level >= 4 && Math.random() < 0.35)
+          ? (Math.random() < 0.5 ? 0.38 : -0.38)
+          : 0;
+
+        this.projectiles.push({
+          type: isBomb ? 'BOMB' : 'BULLET',
+          x: portal.x + Math.cos(fireAngle) * 14,
+          y: portal.y + Math.sin(fireAngle) * 14,
+          vx: Math.cos(fireAngle) * speed,
+          vy: Math.sin(fireAngle) * speed,
+          speed,
+          angle: fireAngle,
+          turnRate,
+          radius: isBomb ? 11.5 : 5.5,
+          age: 0,
+          spin: Math.random() * Math.PI * 2,
+          trail: []
+        });
+
+        this.sound.playLaserFire(isBomb);
+
+        // Portal muzzle particles
+        const pColor = isBomb ? '#f43f5e' : '#22d3ee';
+        for (let i = 0; i < 6; i++) {
+          const a = fireAngle + (Math.random() - 0.5) * 0.9;
+          const spd = 40 + Math.random() * 90;
+          this.particles.push({
+            x: portal.x,
+            y: portal.y,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd,
+            size: 2 + Math.random() * 2.5,
+            color: pColor,
+            life: 0.28 + Math.random() * 0.15,
+            maxLife: 0.43
+          });
+        }
+      }
+
+      spawnShieldItem(portal) {
+        portal.flashTimer = 0.45;
+        // Aim gently toward the inner region of the brain
+        const targetX = this.brainCenter.x + (Math.random() - 0.5) * this.brainScale.rx * 0.65;
+        const targetY = this.brainCenter.y + (Math.random() - 0.5) * this.brainScale.ry * 0.55;
+        const angle = Math.atan2(targetY - portal.y, targetX - portal.x);
+        const speed = 95 + Math.random() * 30;
+
+        this.items.push({
+          type: 'SHIELD',
+          x: portal.x + Math.cos(angle) * 16,
+          y: portal.y + Math.sin(angle) * 16,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed,
+          radius: 15,
+          age: 0,
+          pulse: 0
+        });
+      }
+
+      updateProjectiles(dt) {
+        for (let i = this.projectiles.length - 1; i >= 0; i--) {
+          const proj = this.projectiles[i];
+          proj.age += dt;
+          proj.spin += dt * (proj.type === 'BOMB' ? 5.5 : 12);
+
+          // Apply subtle curve if curved bullet
+          if (proj.turnRate !== 0 && proj.age < 1.8) {
+            proj.angle += proj.turnRate * dt;
+            proj.vx = Math.cos(proj.angle) * proj.speed;
+            proj.vy = Math.sin(proj.angle) * proj.speed;
+          }
+
+          proj.x += proj.vx * dt;
+          proj.y += proj.vy * dt;
+
+          // Motion trail
+          proj.trail.push({ x: proj.x, y: proj.y });
+          if (proj.trail.length > (proj.type === 'BOMB' ? 8 : 10)) {
+            proj.trail.shift();
+          }
+
+          // 1. Check collision with Player Drone
+          const distToDrone = Math.hypot(proj.x - this.drone.x, proj.y - this.drone.y);
+          const shieldRadius = this.drone.shieldActive ? this.drone.radius + 17 : this.drone.radius;
+
+          if (distToDrone < proj.radius + shieldRadius - 2) {
+            this.handleProjectileHitDrone(proj);
+            this.projectiles.splice(i, 1);
+            continue;
+          }
+
+          // 2. Check Wall Absorption on the opposite/adjacent Brain Surface!
+          // Give 0.16s grace period after spawning at the portal edge before checking wall exit
+          if (proj.age > 0.16 && !isPointInPolygon(proj.x, proj.y, this.worldBrainPoly)) {
+            this.handleProjectileAbsorbedByWall(proj);
+            this.projectiles.splice(i, 1);
+            continue;
+          }
+        }
+      }
+
+      handleProjectileAbsorbedByWall(proj) {
+        // Award dodge points & XP
+        const pts = proj.type === 'BOMB' ? 35 : 15;
+        this.score += pts * (1 + (this.level - 1) * 0.15);
+        this.dodgedCount++;
+        this.levelProgress += proj.type === 'BOMB' ? 3.2 : 1.6;
+        if (this.levelProgress >= 100) {
+          this.levelProgress -= 100;
+          this.advanceLevel();
+        }
+
+        this.sound.playWallAbsorb();
+
+        // Crisp neural membrane absorption ripple & spark burst
+        const color = proj.type === 'BOMB' ? '#fb7185' : '#38bdf8';
+        this.spawnShockwave(proj.x, proj.y, color, proj.type === 'BOMB' ? 36 : 22);
+
+        for (let k = 0; k < (proj.type === 'BOMB' ? 12 : 7); k++) {
+          const a = Math.random() * Math.PI * 2;
+          const spd = 30 + Math.random() * 85;
+          this.particles.push({
+            x: proj.x,
+            y: proj.y,
+            vx: Math.cos(a) * spd,
+            vy: Math.sin(a) * spd,
+            size: 1.8 + Math.random() * 2.2,
+            color,
+            life: 0.25 + Math.random() * 0.2,
+            maxLife: 0.45
+          });
+        }
+      }
+
+      handleProjectileHitDrone(proj) {
+        const d = this.drone;
+
+        // If Energy Shield is active, shatter the projectile spectacularly!
+        if (d.shieldActive) {
+          d.shieldActive = false;
+          d.shieldTimer = 0;
+          d.invulnTimer = 0.95;
+
+          this.score += 100;
+          this.screenShake = 11;
+          this.sound.playShieldBlock();
+
+          this.spawnShockwave(d.x, d.y, '#facc15', 115);
+          this.spawnShockwave(proj.x, proj.y, '#38bdf8', 70);
+          this.spawnExplosionParticles(proj.x, proj.y, '#facc15', 28);
+          this.addFloatingText(d.x, d.y - 30, '방어막 반사! +100', '#fde047');
+          return;
+        }
+
+        // Ignore if currently in brief invulnerability frames
+        if (d.invulnTimer > 0) return;
+
+        // Take Hull Damage
+        d.hp -= 1;
+        d.invulnTimer = 1.4;
+        this.screenShake = 16;
+
+        if (d.hp <= 0) {
+          d.hp = 0;
+          this.triggerGameOver();
+        } else {
+          this.sound.playExplosion();
+          this.spawnShockwave(d.x, d.y, '#f43f5e', 95);
+          this.spawnExplosionParticles(proj.x, proj.y, '#f43f5e', 24);
+          this.addFloatingText(d.x, d.y - 28, '기체 손상! -1 HP', '#fb7185');
+        }
+      }
+
+      updateItems(dt) {
+        for (let i = this.items.length - 1; i >= 0; i--) {
+          const item = this.items[i];
+          item.age += dt;
+          item.pulse += dt * 5;
+
+          item.x += item.vx * dt;
+          item.y += item.vy * dt;
+
+          // Gently bounce item off the inner brain wall once so player has a fair chance to grab it
+          if (item.age > 0.35 && !isPointInPolygon(item.x, item.y, this.innerSafePoly)) {
+            if (!item.bounced) {
+              item.bounced = true;
+              const toCenter = Math.atan2(this.brainCenter.y - item.y, this.brainCenter.x - item.x);
+              const spd = Math.hypot(item.vx, item.vy);
+              item.vx = Math.cos(toCenter) * spd;
+              item.vy = Math.sin(toCenter) * spd;
+            } else if (item.age > 9) {
+              this.items.splice(i, 1);
+              continue;
+            }
+          }
+
+          // Check Pickup by Drone
+          const dist = Math.hypot(item.x - this.drone.x, item.y - this.drone.y);
+          if (dist < item.radius + this.drone.radius + 6) {
+            this.activateDroneShield(item);
+            this.items.splice(i, 1);
+          }
+        }
+      }
+
+      activateDroneShield(item) {
+        const d = this.drone;
+        d.shieldActive = true;
+        d.shieldTimer = d.shieldMaxDuration;
+        this.score += 150;
+
+        this.sound.playShieldPickup();
+        this.screenShake = 6;
+
+        // Spectacular multi-ring harmonic burst
+        this.spawnShockwave(d.x, d.y, '#facc15', 110);
+        this.spawnShockwave(d.x, d.y, '#22d3ee', 80);
+        this.spawnExplosionParticles(item.x, item.y, '#fde047', 30);
+        this.addFloatingText(d.x, d.y - 32, '에너지 방어막 활성화! +150', '#fde047');
+      }
+
+      spawnExplosionParticles(x, y, color, count) {
+        for (let i = 0; i < count; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = 50 + Math.random() * 210;
+          this.particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            size: 2 + Math.random() * 3.8,
+            color: i % 3 === 0 ? '#ffffff' : color,
+            life: 0.35 + Math.random() * 0.35,
+            maxLife: 0.7
+          });
+        }
+      }
+
+      spawnShockwave(x, y, color, maxRadius) {
+        this.shockwaves.push({
+          x,
+          y,
+          radius: 6,
+          maxRadius,
+          color,
+          life: 0.42,
+          maxLife: 0.42
+        });
+      }
+
+      addFloatingText(x, y, text, color) {
+        this.floatingTexts.push({
+          x,
+          y,
+          text,
+          color,
+          life: 1.15,
+          maxLife: 1.15
+        });
+      }
+
+      // --------------------------------------------------------------------------
+      // HUD DOM SYNCHRONIZATION
+      // --------------------------------------------------------------------------
+      updateHudUI() {
+        document.getElementById('hudLevel').textContent = `LV.${this.level}`;
+        const pct = Math.min(100, Math.floor(this.levelProgress));
+        document.getElementById('hudLevelPct').textContent = `${pct}%`;
+        document.getElementById('hudLevelBar').style.width = `${pct}%`;
+
+        // Difficulty Status Tag
+        const tagEl = document.getElementById('hudDifficultyTag');
+        if (this.level <= 2) {
+          tagEl.textContent = '안정 상태';
+          tagEl.className = 'text-[11px] px-2 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 font-semibold';
+        } else if (this.level <= 5) {
+          tagEl.textContent = '신경 활성';
+          tagEl.className = 'text-[11px] px-2 py-0.5 rounded-full bg-purple-500/25 border border-purple-400/50 text-purple-200 font-semibold';
+        } else if (this.level <= 8) {
+          tagEl.textContent = '과부하 경보';
+          tagEl.className = 'text-[11px] px-2 py-0.5 rounded-full bg-amber-500/25 border border-amber-400/50 text-amber-200 font-semibold';
+        } else {
+          tagEl.textContent = '초극한 폭주';
+          tagEl.className = 'text-[11px] px-2 py-0.5 rounded-full bg-rose-500/30 border border-rose-400/60 text-rose-200 font-semibold animate-pulse';
+        }
+
+        // Hearts / Hull Integrity
+        const heartsContainer = document.getElementById('hudHearts');
+        let heartsHtml = '';
+        for (let i = 0; i < this.drone.maxHp; i++) {
+          const active = i < this.drone.hp;
+          heartsHtml += `
+            <span class="inline-block w-4 h-4 sm:w-5 sm:h-5 rounded-md transition-all ${
+              active
+                ? 'bg-gradient-to-br from-rose-400 to-pink-600 shadow-[0_0_10px_rgba(244,63,94,0.8)] border border-rose-200/70'
+                : 'bg-slate-800/80 border border-slate-700 opacity-40'
+            }"></span>
+          `;
+        }
+        heartsContainer.innerHTML = heartsHtml;
+
+        // Shield Badge
+        const shieldText = document.getElementById('hudShieldText');
+        const shieldDot = document.getElementById('hudShieldDot');
+        if (this.drone.shieldActive) {
+          shieldText.textContent = `가동 중 (${Math.ceil(this.drone.shieldTimer)}s)`;
+          shieldText.className = 'text-xs sm:text-sm font-bold flex items-center gap-1.5 text-amber-300 neon-text-gold';
+          shieldDot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-amber-300 animate-ping';
+        } else {
+          shieldText.textContent = '미장착';
+          shieldText.className = 'text-xs sm:text-sm font-bold flex items-center gap-1.5 text-slate-400';
+          shieldDot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-slate-600';
+        }
+
+        document.getElementById('hudScore').textContent = Math.floor(this.score).toLocaleString();
+        document.getElementById('hudBestScore').textContent = Math.max(this.bestScore, Math.floor(this.score)).toLocaleString();
+      }
+
+      // --------------------------------------------------------------------------
+      // MASTER CANVAS RENDERER
+      // --------------------------------------------------------------------------
+      render() {
+        const ctx = this.ctx;
+        const w = this.width;
+        const h = this.height;
+
+        ctx.save();
+
+        // Apply screen shake transform
+        if (this.screenShake > 0.2) {
+          const sx = (Math.random() - 0.5) * this.screenShake;
+          const sy = (Math.random() - 0.5) * this.screenShake;
+          ctx.translate(sx, sy);
+        }
+
+        // 1. Deep Cybernetic Void Background
+        this.renderBackground(ctx, w, h);
+
+        // 2. Side-Profile Human Brain Arena (Outer Glow, Cavity, Gyri/Sulci, Synapses)
+        this.renderBrainArena(ctx);
+
+        // 3. The 4 Cerebral Cortex Portals (상, 하, 좌, 우)
+        this.renderFourPortals(ctx);
+
+        // 4. Shield Power-Up Items
+        this.renderShieldItems(ctx);
+
+        // 5. Player Drone & Spectacular Multi-Layered Shield Aura
+        if (this.state !== 'GAMEOVER' || this.drone.hp > 0) {
+          this.renderDrone(ctx);
+        }
+
+        // 6. Incoming Bullets & Bombs
+        this.renderProjectiles(ctx);
+
+        // 7. Shockwaves, Particles & Floating Combat Text
+        this.renderEffects(ctx);
+
+        // 8. Dramatic Level-Up Banner Overlay on Canvas
+        if (this.levelUpBannerTimer > 0) {
+          this.renderLevelUpBanner(ctx, w, h);
+        }
+
+        ctx.restore();
+      }
+
+      renderBackground(ctx, w, h) {
+        const bgGrad = ctx.createRadialGradient(
+          this.brainCenter.x, this.brainCenter.y, 40,
+          this.brainCenter.x, this.brainCenter.y, Math.max(w, h) * 0.75
+        );
+        bgGrad.addColorStop(0, '#0c152c');
+        bgGrad.addColorStop(0.55, '#070b18');
+        bgGrad.addColorStop(1, '#04060c');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, w, h);
+
+        // Subtle cyber grid lines
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.04)';
+        ctx.lineWidth = 1;
+        const gridStep = 48;
+        ctx.beginPath();
+        for (let x = (this.globalTime * 8) % gridStep; x < w; x += gridStep) {
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, h);
+        }
+        for (let y = (this.globalTime * 8) % gridStep; y < h; y += gridStep) {
+          ctx.moveTo(0, y);
+          ctx.lineTo(w, y);
+        }
+        ctx.stroke();
+
+        // Ambient floating particles
+        for (const s of this.bgStars) {
+          s.y -= s.speed * 0.016;
+          if (s.y < 0) s.y = h;
+          ctx.fillStyle = `rgba(125, 211, 252, ${s.alpha})`;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      traceBrainPath(ctx) {
+        const poly = this.worldBrainPoly;
+        if (!poly.length) return;
+        ctx.beginPath();
+        ctx.moveTo(poly[0].x, poly[0].y);
+        for (let i = 1; i < poly.length; i++) {
+          ctx.lineTo(poly[i].x, poly[i].y);
+        }
+        ctx.closePath();
+      }
+
+      renderBrainArena(ctx) {
+        const { x: cx, y: cy } = this.brainCenter;
+        const { rx, ry } = this.brainScale;
+        const pulse = 0.5 + 0.5 * Math.sin(this.globalTime * 2.2);
+
+        // Outer Cranial Aura Halo
+        ctx.save();
+        this.traceBrainPath(ctx);
+        ctx.shadowColor = 'rgba(34, 211, 238, 0.45)';
+        ctx.shadowBlur = 32 + pulse * 12;
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+        ctx.lineWidth = 10;
+        ctx.stroke();
+        ctx.restore();
+
+        // Brain Interior Fill (Clipped to Brain Silhouette)
+        ctx.save();
+        this.traceBrainPath(ctx);
+        const brainGrad = ctx.createRadialGradient(
+          cx - rx * 0.1, cy - ry * 0.1, rx * 0.08,
+          cx, cy, rx * 1.05
+        );
+        brainGrad.addColorStop(0, 'rgba(18, 32, 66, 0.92)');
+        brainGrad.addColorStop(0.65, 'rgba(11, 20, 44, 0.95)');
+        brainGrad.addColorStop(1, 'rgba(22, 16, 48, 0.98)');
+        ctx.fillStyle = brainGrad;
+        ctx.fill();
+        ctx.clip();
+
+        // Synaptic Constellation Lines inside the brain
+        ctx.lineWidth = 1;
+        for (let i = 0; i < this.synapseNodes.length; i++) {
+          const n1 = this.synapseNodes[i];
+          for (let j = i + 1; j < this.synapseNodes.length; j++) {
+            const n2 = this.synapseNodes[j];
+            const dist = Math.hypot(n1.x - n2.x, n1.y - n2.y);
+            if (dist < rx * 0.36) {
+              const alpha = (1 - dist / (rx * 0.36)) * 0.16;
+              ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
+              ctx.beginPath();
+              ctx.moveTo(n1.x, n1.y);
+              ctx.lineTo(n2.x, n2.y);
+              ctx.stroke();
+            }
+          }
+        }
+
+        // Glowing Synaptic Nodes
+        for (const node of this.synapseNodes) {
+          const glow = 0.35 + 0.45 * Math.sin(this.globalTime * 3 + node.phase);
+          ctx.fillStyle = `rgba(125, 211, 252, ${glow})`;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // Animated Electrical Impulses traveling between synapses
+        for (const sp of this.synapsePulses) {
+          const px = sp.x1 + (sp.x2 - sp.x1) * sp.progress;
+          const py = sp.y1 + (sp.y2 - sp.y1) * sp.progress;
+          ctx.fillStyle = '#e879f9';
+          ctx.shadowColor = '#e879f9';
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+
+        // Anatomical Sulci (Cortical Folds) rendered as glowing neural grooves
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.24)';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        for (const curve of this.sulciCurves) {
+          if (curve.length < 2) continue;
+          ctx.beginPath();
+          ctx.moveTo(curve[0].x, curve[0].y);
+          for (let i = 1; i < curve.length - 1; i++) {
+            const xc = (curve[i].x + curve[i + 1].x) * 0.5;
+            const yc = (curve[i].y + curve[i + 1].y) * 0.5;
+            ctx.quadraticCurveTo(curve[i].x, curve[i].y, xc, yc);
+          }
+          const last = curve[curve.length - 1];
+          ctx.lineTo(last.x, last.y);
+          ctx.stroke();
+        }
+
+        ctx.restore(); // End brain clip
+
+        // Crisp Neon Brain Membrane Outline (Double Layer)
+        ctx.save();
+        this.traceBrainPath(ctx);
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 3;
+        ctx.shadowColor = '#0ea5e9';
+        ctx.shadowBlur = 16;
+        ctx.stroke();
+
+        // Inner thin membrane highlight
+        ctx.strokeStyle = 'rgba(224, 242, 254, 0.55)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+
+        // Subtle Anatomical Orientation Labels (전두엽 / 후두엽)
+        ctx.save();
+        ctx.font = '600 11px "Noto Sans KR", sans-serif';
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.38)';
+        ctx.textAlign = 'center';
+        ctx.fillText('전두엽 (FRONTAL)', cx - rx * 0.52, cy - ry * 0.84);
+        ctx.fillText('후두엽 (OCCIPITAL)', cx + rx * 0.55, cy - ry * 0.80);
+        ctx.fillText('소뇌 (CEREBELLUM)', cx + rx * 0.56, cy + ry * 0.82);
+        ctx.restore();
+      }
+
+      renderFourPortals(ctx) {
+        for (const p of this.portals) {
+          ctx.save();
+          ctx.translate(p.x, p.y);
+
+          const isFlashing = p.flashTimer > 0;
+          const baseRadius = 17 + Math.sin(p.pulsePhase) * 2;
+          const activeRadius = isFlashing ? baseRadius + 6 : baseRadius;
+
+          // Dark Breach Core (Hole punched in the cerebral cortex)
+          ctx.fillStyle = '#03050a';
+          ctx.beginPath();
+          ctx.arc(0, 0, activeRadius * 0.78, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Glowing Cybernetic Portal Ring
+          ctx.strokeStyle = isFlashing ? '#ffffff' : p.color;
+          ctx.lineWidth = isFlashing ? 4 : 2.8;
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = isFlashing ? 26 : 14;
+          ctx.beginPath();
+          ctx.arc(0, 0, activeRadius, 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Rotating Segmented Aperture Arcs
+          ctx.rotate(this.globalTime * 2.4 + p.pulsePhase);
+          ctx.strokeStyle = p.color;
+          ctx.lineWidth = 2;
+          for (let k = 0; k < 3; k++) {
+            const start = (k * Math.PI * 2) / 3;
+            ctx.beginPath();
+            ctx.arc(0, 0, activeRadius + 5, start, start + 0.7);
+            ctx.stroke();
+          }
+          ctx.rotate(-(this.globalTime * 2.4 + p.pulsePhase));
+
+          // Inward Laser Sightline Indicator when firing
+          if (isFlashing) {
+            const alpha = Math.min(0.65, p.flashTimer * 1.6);
+            const grad = ctx.createLinearGradient(
+              0, 0,
+              Math.cos(p.inwardAngle) * 140,
+              Math.sin(p.inwardAngle) * 140
+            );
+            grad.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+            grad.addColorStop(1, 'rgba(34, 211, 238, 0)');
+            ctx.strokeStyle = grad;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(Math.cos(p.inwardAngle) * 140, Math.sin(p.inwardAngle) * 140);
+            ctx.stroke();
+          }
+
+          ctx.restore();
+        }
+      }
+
+      renderShieldItems(ctx) {
+        for (const item of this.items) {
+          ctx.save();
+          ctx.translate(item.x, item.y);
+
+          const pulseScale = 1 + Math.sin(item.pulse) * 0.12;
+          ctx.scale(pulseScale, pulseScale);
+
+          // Outer Golden-Cyan Halo
+          const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 26);
+          glow.addColorStop(0, 'rgba(254, 240, 138, 0.95)');
+          glow.addColorStop(0.5, 'rgba(250, 204, 21, 0.45)');
+          glow.addColorStop(1, 'rgba(34, 211, 238, 0)');
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(0, 0, 26, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Rotating Geometric Hexagon Ring
+          ctx.save();
+          ctx.rotate(this.globalTime * 3.2);
+          ctx.strokeStyle = '#fde047';
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          for (let i = 0; i < 6; i++) {
+            const a = (i * Math.PI) / 3;
+            const px = Math.cos(a) * 15;
+            const py = Math.sin(a) * 15;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
+          ctx.stroke();
+          ctx.restore();
+
+          // Inner Diamond Core
+          ctx.rotate(-this.globalTime * 2.5);
+          ctx.fillStyle = '#ffffff';
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(0, -8);
+          ctx.lineTo(8, 0);
+          ctx.lineTo(0, 8);
+          ctx.lineTo(-8, 0);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.restore();
+        }
+      }
+
+      renderDrone(ctx) {
+        const d = this.drone;
+
+        // Blink during post-hit invulnerability
+        if (d.invulnTimer > 0 && !d.shieldActive && Math.floor(d.invulnTimer * 18) % 2 === 0) {
+          ctx.save();
+          ctx.globalAlpha = 0.4;
+          this.drawDroneBody(ctx, d);
+          ctx.restore();
+          return;
+        }
+
+        // 1. Thruster Motion Trail
+        for (let i = 0; i < d.trail.length; i++) {
+          const t = d.trail[i];
+          const ratio = (i + 1) / d.trail.length;
+          ctx.fillStyle = d.shieldActive
+            ? `rgba(250, 204, 21, ${ratio * 0.28})`
+            : `rgba(34, 211, 238, ${ratio * 0.25})`;
+          ctx.beginPath();
+          ctx.arc(t.x, t.y, d.radius * 0.65 * ratio, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        // 2. Drone Chassis
+        this.drawDroneBody(ctx, d);
+
+        // 3. SPECTACULAR MULTI-LAYERED ENERGY SHIELD AURA (When Item Active)
+        if (d.shieldActive) {
+          this.renderSpectacularShield(ctx, d);
+        }
+      }
+
+      drawDroneBody(ctx, d) {
+        ctx.save();
+        ctx.translate(d.x, d.y);
+        ctx.rotate(d.tilt);
+
+        const r = d.radius;
+
+        // Quadcopter X-Frame Arms
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 3.2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-r * 0.95, -r * 0.65);
+        ctx.lineTo(r * 0.95, r * 0.65);
+        ctx.moveTo(r * 0.95, -r * 0.65);
+        ctx.lineTo(-r * 0.95, r * 0.65);
+        ctx.stroke();
+
+        // 4 Spinning Neon Rotors
+        const rotorOffsets = [
+          [-r * 0.95, -r * 0.65],
+          [ r * 0.95, -r * 0.65],
+          [-r * 0.95,  r * 0.65],
+          [ r * 0.95,  r * 0.65]
+        ];
+
+        for (const [rx, ry] of rotorOffsets) {
+          ctx.save();
+          ctx.translate(rx, ry);
+          // Rotor blur disc
+          ctx.fillStyle = 'rgba(56, 189, 248, 0.22)';
+          ctx.beginPath();
+          ctx.arc(0, 0, r * 0.56, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Spinning blade
+          ctx.rotate(d.rotorAngle);
+          ctx.strokeStyle = '#7dd3fc';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(-r * 0.52, 0);
+          ctx.lineTo(r * 0.52, 0);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Sleek Armored Fuselage Pod
+        ctx.fillStyle = '#0f172a';
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(0, -r * 0.85);
+        ctx.lineTo(r * 0.68, 0);
+        ctx.lineTo(0, r * 0.85);
+        ctx.lineTo(-r * 0.68, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Glowing Neural Sensor Eye Core
+        const coreColor = d.shieldActive ? '#fde047' : '#22d3ee';
+        ctx.fillStyle = coreColor;
+        ctx.shadowColor = coreColor;
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.34, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      renderSpectacularShield(ctx, d) {
+        ctx.save();
+        ctx.translate(d.x, d.y);
+
+        const shieldR = d.radius + 18;
+        const pulse = 1 + Math.sin(this.globalTime * 8) * 0.05;
+        const timeRatio = Math.max(0, d.shieldTimer / d.shieldMaxDuration);
+
+        // 1. Prismatic Radial Energy Field
+        const auraGrad = ctx.createRadialGradient(0, 0, d.radius * 0.4, 0, 0, shieldR * 1.25);
+        auraGrad.addColorStop(0, 'rgba(34, 211, 238, 0.05)');
+        auraGrad.addColorStop(0.65, 'rgba(250, 204, 21, 0.24)');
+        auraGrad.addColorStop(0.88, 'rgba(232, 121, 249, 0.42)');
+        auraGrad.addColorStop(1, 'rgba(34, 211, 238, 0)');
+        ctx.fillStyle = auraGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, shieldR * 1.25 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 2. Rotating Outer Harmonic Hexagon Barrier
+        ctx.save();
+        ctx.rotate(this.globalTime * 2.2);
+        ctx.strokeStyle = '#fde047';
+        ctx.shadowColor = '#facc15';
+        ctx.shadowBlur = 18;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const a = (i * Math.PI) / 3;
+          const px = Math.cos(a) * shieldR * pulse;
+          const py = Math.sin(a) * shieldR * pulse;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+
+        // 3. Counter-Rotating Inner Cyan Energy Ring + Remaining Duration Arc
+        ctx.save();
+        ctx.rotate(-this.globalTime * 3.4);
+        ctx.strokeStyle = '#22d3ee';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        ctx.arc(0, 0, (shieldR - 5) * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // Duration Gauge Arc
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(0, 0, shieldR + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * timeRatio);
+        ctx.stroke();
+
+        // 4. Orbiting Prismatic Sparks
+        for (let i = 0; i < 4; i++) {
+          const orbitAngle = this.globalTime * 5 + (i * Math.PI) / 2;
+          const ox = Math.cos(orbitAngle) * (shieldR + 2);
+          const oy = Math.sin(orbitAngle) * (shieldR + 2);
+          ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#e879f9';
+          ctx.beginPath();
+          ctx.arc(ox, oy, 2.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        ctx.restore();
+      }
+
+      renderProjectiles(ctx) {
+        for (const proj of this.projectiles) {
+          // Render Trail
+          if (proj.trail.length > 1) {
+            ctx.save();
+            for (let i = 0; i < proj.trail.length - 1; i++) {
+              const ratio = (i + 1) / proj.trail.length;
+              ctx.strokeStyle = proj.type === 'BOMB'
+                ? `rgba(244, 63, 94, ${ratio * 0.45})`
+                : `rgba(34, 211, 238, ${ratio * 0.55})`;
+              ctx.lineWidth = proj.radius * 1.3 * ratio;
+              ctx.lineCap = 'round';
+              ctx.beginPath();
+              ctx.moveTo(proj.trail[i].x, proj.trail[i].y);
+              ctx.lineTo(proj.trail[i + 1].x, proj.trail[i + 1].y);
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+
+          ctx.save();
+          ctx.translate(proj.x, proj.y);
+
+          if (proj.type === 'BULLET') {
+            // Sleek Plasma Dart Bullet
+            ctx.rotate(Math.atan2(proj.vy, proj.vx));
+            ctx.fillStyle = '#22d3ee';
+            ctx.shadowColor = '#06b6d4';
+            ctx.shadowBlur = 14;
+
+            ctx.beginPath();
+            ctx.moveTo(11, 0);
+            ctx.lineTo(-7, -4.5);
+            ctx.lineTo(-4, 0);
+            ctx.lineTo(-7, 4.5);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(2, 0, 2.2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            // Spiky Cyber-Ordnance Bomb
+            ctx.rotate(proj.spin);
+            const r = proj.radius;
+            const pulse = 1 + Math.sin(proj.age * 16) * 0.14;
+
+            // Danger Aura
+            ctx.fillStyle = 'rgba(244, 63, 94, 0.25)';
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 1.65 * pulse, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Spikes
+            ctx.fillStyle = '#fb7185';
+            ctx.shadowColor = '#f43f5e';
+            ctx.shadowBlur = 16;
+            const spikes = 8;
+            ctx.beginPath();
+            for (let s = 0; s < spikes * 2; s++) {
+              const rad = s % 2 === 0 ? r * 1.35 : r * 0.72;
+              const a = (s * Math.PI) / spikes;
+              const sx = Math.cos(a) * rad;
+              const sy = Math.sin(a) * rad;
+              if (s === 0) ctx.moveTo(sx, sy);
+              else ctx.lineTo(sx, sy);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            // Inner Dark Core + Blinking Detonator LED
+            ctx.fillStyle = '#1e1b4b';
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = Math.sin(proj.age * 22) > 0 ? '#fde047' : '#f43f5e';
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.restore();
+        }
+      }
+
+      renderEffects(ctx) {
+        // Expanding Shockwave Rings
+        for (const sw of this.shockwaves) {
+          const alpha = Math.max(0, sw.life / sw.maxLife);
+          ctx.save();
+          ctx.strokeStyle = sw.color;
+          ctx.globalAlpha = alpha;
+          ctx.lineWidth = 3 * alpha;
+          ctx.beginPath();
+          ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Particles
+        for (const pt of this.particles) {
+          const alpha = Math.max(0, pt.life / pt.maxLife);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = pt.color;
+          ctx.shadowColor = pt.color;
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, pt.size * alpha, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        // Floating Score / Status Callouts
+        for (const ft of this.floatingTexts) {
+          const alpha = Math.min(1, (ft.life / ft.maxLife) * 1.4);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.font = '700 13px "Orbitron", "Noto Sans KR", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = ft.color;
+          ctx.shadowColor = 'rgba(0,0,0,0.85)';
+          ctx.shadowBlur = 6;
+          ctx.fillText(ft.text, ft.x, ft.y);
+          ctx.restore();
+        }
+      }
+
+      renderLevelUpBanner(ctx, w, h) {
+        const progress = 1 - this.levelUpBannerTimer / 2.6;
+        const alpha = progress < 0.2
+          ? progress / 0.2
+          : progress > 0.75
+            ? (1 - progress) / 0.25
+            : 1;
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+        const bannerY = this.brainCenter.y - this.brainScale.ry * 0.42;
+
+        ctx.font = '900 28px "Orbitron", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#f0abfc';
+        ctx.shadowColor = '#d946ef';
+        ctx.shadowBlur = 22;
+        ctx.fillText(`LEVEL ${this.level} // SYNAPTIC OVERDRIVE`, w * 0.5, bannerY);
+
+        ctx.font = '600 13px "Noto Sans KR", sans-serif';
+        ctx.fillStyle = '#bae6fd';
+        ctx.fillText('포털 방어 체계 가속화 — 탄환 및 폭탄 속도 증가!', w * 0.5, bannerY + 24);
+        ctx.restore();
+      }
+    }
+
+    // Boot up the game once DOM & fonts are ready
+    window.addEventListener('DOMContentLoaded', () => {
+      window.neuralGame = new NeuralDroneGame();
+    });
+  </script>
+</body>
+</html>
