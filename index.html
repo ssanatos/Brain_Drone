@@ -33,11 +33,18 @@
 
     #gameCanvas {
       display: block;
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      height: 100%;
       position: fixed;
       inset: 0;
       z-index: 1;
+    }
+
+    /* Tailwind CDN 로딩 순서와 무관하게 오버레이가 확실히 숨겨지도록 보강 */
+    #startOverlay.hidden,
+    #pauseOverlay.hidden,
+    #gameOverOverlay.hidden {
+      display: none !important;
     }
 
     /* Glassmorphic Neon Panels */
@@ -152,6 +159,14 @@
           <span id="hudShieldText">미장착</span>
         </div>
       </div>
+
+      <!-- Active Chrono Status (Hidden unless active) -->
+      <div id="hudChronoBox" class="hidden items-center gap-2 pl-3 border-l border-slate-700/70">
+        <div>
+          <div class="text-[10px] tracking-widest text-violet-300/90 font-cyber">CHRONO</div>
+          <div id="hudChronoText" class="text-xs sm:text-sm font-bold text-violet-300">SLOW</div>
+        </div>
+      </div>
     </div>
 
     <!-- Right: Score, Best Score & Controls -->
@@ -209,28 +224,28 @@
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left mb-7">
         <div class="bg-slate-900/75 border border-cyan-500/25 rounded-2xl p-3.5">
           <div class="text-cyan-400 font-bold text-xs mb-1 flex items-center gap-1.5">
-            <span>🎮</span> 전후좌우 비행
+            <span>🛡️</span> 진화형 다중 방어벽
           </div>
           <p class="text-xs text-slate-300 leading-relaxed">
-            <span class="text-white font-semibold">WASD</span> 또는 <span class="text-white font-semibold">방향키</span>(모바일 터치 드래그)로 뇌 내부를 자유롭게 비행합니다.
+            방어막 코어를 연속 획득하면 <span class="text-cyan-300 font-semibold">LV.1 → LV.5</span>까지 거대하고 화려한 홀로그램 오라로 진화합니다.
           </p>
         </div>
 
         <div class="bg-slate-900/75 border border-rose-500/25 rounded-2xl p-3.5">
           <div class="text-rose-400 font-bold text-xs mb-1 flex items-center gap-1.5">
-            <span>💥</span> 4대 피질 포털 회피
+            <span>💥</span> 특수 폭탄 & 네온탄
           </div>
           <p class="text-xs text-slate-300 leading-relaxed">
-            상·하·좌·우 구멍에서 날아오는 탄환과 폭탄을 피하면 반대편 뇌 벽에 흡수되며 점수를 얻습니다.
+            분열 폭탄, 중력 블랙홀탄, 충격파탄 등 4종의 특수 폭탄과 고속 레이저탄을 피해 벽면으로 유도하세요.
           </p>
         </div>
 
         <div class="bg-slate-900/75 border border-amber-500/25 rounded-2xl p-3.5">
           <div class="text-amber-300 font-bold text-xs mb-1 flex items-center gap-1.5">
-            <span>🛡️</span> 시냅스 방어막
+            <span>⚡</span> 전탄 요격 & 시간 감속
           </div>
           <p class="text-xs text-slate-300 leading-relaxed">
-            빛나는 에너지 코어를 획득하면 화려한 오라 방어막이 생성되어 충돌한 폭탄을 분쇄합니다!
+            <span class="text-amber-300 font-semibold">EMP 노바</span>를 먹으면 화면의 모든 탄환과 폭탄을 레이저로 일제 요격합니다!
           </p>
         </div>
       </div>
@@ -339,8 +354,8 @@
 
       toggleMute() {
         this.muted = !this.muted;
-        if (this.masterGain && this.ctx) {
-          this.masterGain.gain.setTargetAtTime(this.muted ? 0 : 0.32, this.ctx.currentTime, 0.02);
+        if (this.masterGain) {
+          this.masterGain.gain.value = this.muted ? 0 : 0.32;
         }
         return this.muted;
       }
@@ -350,65 +365,108 @@
         const now = this.ctx.currentTime;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
-
-        if (isBomb) {
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(190, now);
-          osc.frequency.exponentialRampToValueAtTime(58, now + 0.24);
-          gain.gain.setValueAtTime(0.28, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-        } else {
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(760, now);
-          osc.frequency.exponentialRampToValueAtTime(180, now + 0.13);
-          gain.gain.setValueAtTime(0.16, now);
-          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-        }
-
+        const dur = isBomb ? 0.24 : 0.12;
+        osc.type = isBomb ? 'square' : 'sawtooth';
+        osc.frequency.setValueAtTime(isBomb ? 190 : 920, now);
+        osc.frequency.exponentialRampToValueAtTime(isBomb ? 70 : 260, now + dur);
+        gain.gain.setValueAtTime(isBomb ? 0.14 : 0.08, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
         osc.connect(gain);
         gain.connect(this.masterGain);
         osc.start(now);
-        osc.stop(now + (isBomb ? 0.26 : 0.15));
+        osc.stop(now + dur + 0.02);
       }
 
       playWallAbsorb() {
         if (this.muted || !this.ctx) return;
         const now = this.ctx.currentTime;
+        // 한꺼번에 너무 많은 소리가 겹치지 않도록 간격 제한
+        if (this._lastAbsorb && now - this._lastAbsorb < 0.05) return;
+        this._lastAbsorb = now;
         const osc = this.ctx.createOscillator();
         const gain = this.ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.setValueAtTime(520 + Math.random() * 240, now);
-        osc.frequency.exponentialRampToValueAtTime(980, now + 0.08);
-        gain.gain.setValueAtTime(0.08, now);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-
+        osc.frequency.setValueAtTime(540, now);
+        osc.frequency.exponentialRampToValueAtTime(230, now + 0.1);
+        gain.gain.setValueAtTime(0.07, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
         osc.connect(gain);
         gain.connect(this.masterGain);
         osc.start(now);
-        osc.stop(now + 0.095);
+        osc.stop(now + 0.12);
       }
 
-      playShieldPickup() {
+      playShieldPickup(tier = 1) {
         if (this.muted || !this.ctx) return;
         const now = this.ctx.currentTime;
-        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+        const baseShift = 1 + (tier - 1) * 0.08;
+        const notes = [523.25, 659.25, 783.99, 1046.50, 1318.5].map(f => f * baseShift);
         notes.forEach((freq, idx) => {
           const osc = this.ctx.createOscillator();
           const gain = this.ctx.createGain();
-          osc.type = 'sine';
-          const start = now + idx * 0.055;
+          osc.type = idx % 2 === 0 ? 'sine' : 'triangle';
+          const start = now + idx * 0.045;
           osc.frequency.setValueAtTime(freq, start);
-          osc.frequency.exponentialRampToValueAtTime(freq * 1.03, start + 0.28);
+          osc.frequency.exponentialRampToValueAtTime(freq * 1.04, start + 0.28);
 
           gain.gain.setValueAtTime(0.001, start);
           gain.gain.linearRampToValueAtTime(0.22, start + 0.02);
-          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.32);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + 0.34);
 
           osc.connect(gain);
           gain.connect(this.masterGain);
           osc.start(start);
-          osc.stop(start + 0.34);
+          osc.stop(start + 0.36);
         });
+      }
+
+      playEmpIntercept() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        // Deep sub bass drop + high-tech laser sweep
+        const sub = this.ctx.createOscillator();
+        const subGain = this.ctx.createGain();
+        sub.type = 'sine';
+        sub.frequency.setValueAtTime(160, now);
+        sub.frequency.exponentialRampToValueAtTime(34, now + 0.65);
+        subGain.gain.setValueAtTime(0.45, now);
+        subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.68);
+        sub.connect(subGain);
+        subGain.connect(this.masterGain);
+        sub.start(now);
+        sub.stop(now + 0.7);
+
+        // Cascading laser interception zaps
+        for (let i = 0; i < 6; i++) {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sawtooth';
+          const t = now + i * 0.045;
+          osc.frequency.setValueAtTime(1400 - i * 110, t);
+          osc.frequency.exponentialRampToValueAtTime(240, t + 0.16);
+          gain.gain.setValueAtTime(0.16, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+          osc.start(t);
+          osc.stop(t + 0.18);
+        }
+      }
+
+      playChronoSlow() {
+        if (this.muted || !this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, now);
+        osc.frequency.exponentialRampToValueAtTime(220, now + 0.55);
+        gain.gain.setValueAtTime(0.28, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+        osc.connect(gain);
+        gain.connect(this.masterGain);
+        osc.start(now);
+        osc.stop(now + 0.6);
       }
 
       playShieldBlock() {
@@ -441,7 +499,7 @@
         if (this.muted || !this.ctx) return;
         const now = this.ctx.currentTime;
         // White noise burst + low sub drop
-        const bufferSize = this.ctx.sampleRate * 0.45;
+        const bufferSize = Math.floor(this.ctx.sampleRate * 0.45);
         const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
         const data = buffer.getChannelData(0);
         for (let i = 0; i < bufferSize; i++) {
@@ -683,9 +741,10 @@
           radius: 15,
           hp: 3,
           maxHp: 3,
-          shieldActive: false,
+          shieldLevel: 0,      // 0 = none, 1..5 = evolving multi-tier barrier
+          maxShieldLevel: 5,
           shieldTimer: 0,
-          shieldMaxDuration: 14, // seconds (or until absorbing 1 hit)
+          shieldMaxDuration: 18,
           invulnTimer: 0,
           tilt: 0,
           rotorAngle: 0,
@@ -693,18 +752,22 @@
         };
 
         // Entities
-        this.projectiles = []; // bullets & bombs
-        this.items = [];       // shield power-ups
+        this.projectiles = []; // bullets & multi-type bombs
+        this.items = [];       // SHIELD, EMP_NOVA, CHRONO
         this.particles = [];   // sparks, explosions, wall ripples
         this.shockwaves = [];  // expanding rings
+        this.laserBeams = [];  // EMP interception beams
         this.floatingTexts = [];
 
-        // Timers
+        // Timers & Special Screen Effects
         this.spawnTimer = 0;
-        this.itemSpawnTimer = 6.5;
+        this.itemSpawnTimer = 5.0;
+        this.chronoTimer = 0;
+        this.chromaticFlash = 0;
         this.levelUpBannerTimer = 0;
         this.screenShake = 0;
         this.globalTime = 0;
+        this.hitStopTimer = 0;
 
         // Input tracking
         this.keys = {};
@@ -724,6 +787,10 @@
 
         window.addEventListener('keydown', (e) => {
           this.keys[e.code] = true;
+          if (this.state === 'PLAYING' &&
+              ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+            e.preventDefault();
+          }
           if (e.code === 'KeyP' || e.code === 'Escape') {
             if (this.state === 'PLAYING') this.pauseGame();
             else if (this.state === 'PAUSED') this.resumeGame();
@@ -735,6 +802,12 @@
 
         window.addEventListener('keyup', (e) => {
           this.keys[e.code] = false;
+        });
+
+        // 창 포커스를 잃었을 때 키가 눌린 채로 남는 문제 방지
+        window.addEventListener('blur', () => {
+          this.keys = {};
+          this.pointerActive = false;
         });
 
         // Touch & Mouse direct flight support inside canvas
@@ -978,6 +1051,9 @@
       // --------------------------------------------------------------------------
       startGame() {
         this.sound.init();
+        if (document.activeElement && document.activeElement.blur) {
+          document.activeElement.blur(); // Enter/Space 중복 입력 방지
+        }
 
         this.state = 'PLAYING';
         this.score = 0;
@@ -991,7 +1067,7 @@
         this.drone.vx = 0;
         this.drone.vy = 0;
         this.drone.hp = 3;
-        this.drone.shieldActive = false;
+        this.drone.shieldLevel = 0;
         this.drone.shieldTimer = 0;
         this.drone.invulnTimer = 1.2;
         this.drone.trail = [];
@@ -1000,12 +1076,19 @@
         this.items = [];
         this.particles = [];
         this.shockwaves = [];
+        this.laserBeams = [];
         this.floatingTexts = [];
 
         this.spawnTimer = 0.6;
-        this.itemSpawnTimer = 5.5;
+        this.itemSpawnTimer = 4.2;
+        this.chronoTimer = 0;
+        this.chromaticFlash = 0;
         this.levelUpBannerTimer = 0;
         this.screenShake = 0;
+        this.hitStopTimer = 0;
+        this.pointerActive = false;
+        this.drone.tilt = 0;
+        this._hpKey = null;
 
         document.getElementById('startOverlay').classList.add('hidden');
         document.getElementById('pauseOverlay').classList.add('hidden');
@@ -1076,6 +1159,9 @@
       // MAIN UPDATE LOOP
       // --------------------------------------------------------------------------
       loop(timestamp) {
+        // 예외가 나도 게임 루프가 멈추지 않도록 다음 프레임을 먼저 예약
+        requestAnimationFrame((t) => this.loop(t));
+
         const rawDt = (timestamp - this.lastFrameTime) / 1000;
         this.lastFrameTime = timestamp;
         const dt = Math.min(rawDt, 0.05); // Cap delta time for tab switches
@@ -1084,8 +1170,17 @@
         this.updateAmbientEffects(dt);
 
         if (this.state === 'PLAYING') {
-          this.updatePlaying(dt);
+          if (this.hitStopTimer > 0) {
+            this.hitStopTimer = Math.max(0, this.hitStopTimer - dt);
+          } else {
+            this.updatePlaying(dt);
+          }
         } else {
+          // 게임오버 후 화면에 멈춰 있는 탄환/아이템 정리
+          if (this.state === 'GAMEOVER') {
+            if (this.projectiles.length) this.projectiles.length = 0;
+            if (this.items.length) this.items.length = 0;
+          }
           // Gently hover drone in Start / Game Over background
           this.drone.rotorAngle += dt * 26;
           if (this.state === 'START') {
@@ -1094,13 +1189,23 @@
         }
 
         this.render();
-        requestAnimationFrame((t) => this.loop(t));
       }
 
       updateAmbientEffects(dt) {
         // Decay screen shake
         if (this.screenShake > 0) {
           this.screenShake = Math.max(0, this.screenShake - dt * 48);
+        }
+
+        if (this.chromaticFlash > 0) {
+          this.chromaticFlash = Math.max(0, this.chromaticFlash - dt * 1.8);
+        }
+
+        // Update EMP Interception Laser Beams
+        for (let i = this.laserBeams.length - 1; i >= 0; i--) {
+          const lb = this.laserBeams[i];
+          lb.life -= dt;
+          if (lb.life <= 0) this.laserBeams.splice(i, 1);
         }
 
         // Portal pulse decay
@@ -1141,6 +1246,11 @@
           if (pt.life <= 0) this.particles.splice(i, 1);
         }
 
+        // 파티클 폭주 방지 (EMP 요격 등으로 수백 개가 한꺼번에 생길 때 프레임 저하 방지)
+        if (this.particles.length > 520) {
+          this.particles.splice(0, this.particles.length - 520);
+        }
+
         // Update shockwaves
         for (let i = this.shockwaves.length - 1; i >= 0; i--) {
           const sw = this.shockwaves[i];
@@ -1174,9 +1284,15 @@
           this.levelUpBannerTimer = Math.max(0, this.levelUpBannerTimer - dt);
         }
 
+        if (this.chronoTimer > 0) {
+          this.chronoTimer = Math.max(0, this.chronoTimer - dt);
+        }
+
+        const projTimeScale = this.chronoTimer > 0 ? 0.36 : 1.0;
+
         this.updateDrone(dt);
-        this.updateSpawners(dt);
-        this.updateProjectiles(dt);
+        this.updateSpawners(dt * (this.chronoTimer > 0 ? 0.65 : 1.0));
+        this.updateProjectiles(dt * projTimeScale, dt);
         this.updateItems(dt);
         this.updateHudUI();
       }
@@ -1202,119 +1318,109 @@
         d.rotorAngle += dt * 38;
         if (d.invulnTimer > 0) d.invulnTimer = Math.max(0, d.invulnTimer - dt);
 
-        if (d.shieldActive) {
+        if (d.shieldLevel > 0) {
           d.shieldTimer -= dt;
           if (d.shieldTimer <= 0) {
-            d.shieldActive = false;
+            d.shieldLevel = 0;
             d.shieldTimer = 0;
-            this.addFloatingText(d.x, d.y - 26, '방어막 종료', '#94a3b8');
+            this.addFloatingText(d.x, d.y - 26, '방어막 에너지 소진', '#94a3b8');
           }
         }
 
         // Gather directional input (WASD / Arrow Keys)
+        const k = this.keys;
         let ix = 0;
         let iy = 0;
-        if (this.keys['ArrowLeft'] || this.keys['KeyA']) ix -= 1;
-        if (this.keys['ArrowRight'] || this.keys['KeyD']) ix += 1;
-        if (this.keys['ArrowUp'] || this.keys['KeyW']) iy -= 1;
-        if (this.keys['ArrowDown'] || this.keys['KeyS']) iy += 1;
+        if (k.ArrowLeft || k.KeyA) ix -= 1;
+        if (k.ArrowRight || k.KeyD) ix += 1;
+        if (k.ArrowUp || k.KeyW) iy -= 1;
+        if (k.ArrowDown || k.KeyS) iy += 1;
 
-        // Touch / Mouse drag guidance if no keyboard pressed
-        if (ix === 0 && iy === 0 && this.pointerActive) {
+        const maxSpeed = Math.max(230, this.brainScale.rx * 0.9);
+        let targetVx = 0;
+        let targetVy = 0;
+
+        if (this.pointerActive) {
+          // 마우스/터치: 누르고 있는 지점을 향해 부드럽게 비행
           const dx = this.pointerPos.x - d.x;
           const dy = this.pointerPos.y - d.y;
           const dist = Math.hypot(dx, dy);
-          if (dist > 6) {
-            ix = dx / dist;
-            iy = dy / dist;
+          if (dist > 4) {
+            const spd = Math.min(maxSpeed * 1.1, dist * 7);
+            targetVx = (dx / dist) * spd;
+            targetVy = (dy / dist) * spd;
           }
-        } else if (ix !== 0 && iy !== 0) {
-          const inv = 1 / Math.SQRT2;
-          ix *= inv;
-          iy *= inv;
+        } else if (ix !== 0 || iy !== 0) {
+          const len = Math.hypot(ix, iy) || 1;
+          targetVx = (ix / len) * maxSpeed;
+          targetVy = (iy / len) * maxSpeed;
         }
 
-        // Responsive acceleration & smooth damping
-        const maxSpeed = 335 + Math.min(85, (this.level - 1) * 10);
-        const accel = 2400;
-        const friction = 8.5;
-
-        d.vx += ix * accel * dt;
-        d.vy += iy * accel * dt;
-
-        d.vx -= d.vx * friction * dt;
-        d.vy -= d.vy * friction * dt;
-
-        const speed = Math.hypot(d.vx, d.vy);
-        if (speed > maxSpeed) {
-          d.vx = (d.vx / speed) * maxSpeed;
-          d.vy = (d.vy / speed) * maxSpeed;
-        }
+        const smooth = Math.min(1, dt * 11);
+        d.vx += (targetVx - d.vx) * smooth;
+        d.vy += (targetVy - d.vy) * smooth;
 
         d.x += d.vx * dt;
         d.y += d.vy * dt;
-
-        // Smooth banking tilt based on horizontal velocity
-        const targetTilt = (d.vx / maxSpeed) * 0.34;
-        d.tilt += (targetTilt - d.tilt) * Math.min(1, dt * 14);
-
-        // Enforce strict brain inner cavity boundary
         this.clampDroneInsideBrain();
 
-        // Record thruster motion trail
-        d.trail.push({ x: d.x, y: d.y, alpha: 0.7 });
-        if (d.trail.length > 14) d.trail.shift();
-        for (const t of d.trail) t.alpha *= 0.88;
+        // 기체 기울기 & 추진 잔상
+        const tiltTarget = Math.max(-1, Math.min(1, d.vx / maxSpeed)) * 0.42;
+        d.tilt += (tiltTarget - d.tilt) * Math.min(1, dt * 10);
+
+        d.trail.push({ x: d.x, y: d.y });
+        if (d.trail.length > 12) d.trail.shift();
       }
 
       clampDroneInsideBrain() {
         const d = this.drone;
-        if (!isPointInPolygon(d.x, d.y, this.innerSafePoly)) {
-          const closest = closestPointOnPolygon(d.x, d.y, this.innerSafePoly);
-          d.x = closest.x;
-          d.y = closest.y;
+        const poly = this.innerSafePoly;
+        if (!poly || poly.length < 3) return;
+        if (isPointInPolygon(d.x, d.y, poly)) return;
 
-          // Slide smoothly along the inner cortical membrane without sticking
-          const pushX = this.brainCenter.x - d.x;
-          const pushY = this.brainCenter.y - d.y;
-          const len = Math.hypot(pushX, pushY) || 1;
-          const nx = pushX / len;
-          const ny = pushY / len;
-          const vn = d.vx * nx + d.vy * ny;
-          if (vn < 0) {
-            d.vx -= vn * nx;
-            d.vy -= vn * ny;
-          }
+        // 뇌 경계 밖으로 나가면 가장 가까운 안쪽 경계로 되돌리고 바깥 방향 속도 제거
+        const cp = closestPointOnPolygon(d.x, d.y, poly);
+        d.x = cp.x + cp.nx * 1.5;
+        d.y = cp.y + cp.ny * 1.5;
+
+        const vn = d.vx * cp.nx + d.vy * cp.ny;
+        if (vn < 0) {
+          d.vx -= vn * cp.nx;
+          d.vy -= vn * cp.ny;
+        }
+
+        // 오목한 경계 등에서 여전히 밖이면 중심 쪽으로 보정
+        let guard = 0;
+        while (!isPointInPolygon(d.x, d.y, poly) && guard++ < 12) {
+          d.x += (this.brainCenter.x - d.x) * 0.12;
+          d.y += (this.brainCenter.y - d.y) * 0.12;
         }
       }
 
       updateSpawners(dt) {
-        // Difficulty scaling formula
-        const baseInterval = Math.max(0.32, 1.35 * Math.pow(0.89, this.level - 1));
+        // Hazard Spawner: 4개 포털 중 하나에서 탄환/폭탄 발사
         this.spawnTimer -= dt;
-
         if (this.spawnTimer <= 0) {
-          this.spawnTimer = baseInterval * (0.82 + Math.random() * 0.36);
+          const baseInterval = Math.max(0.32, 1.15 - (this.level - 1) * 0.085);
+          this.spawnTimer = baseInterval * (0.75 + Math.random() * 0.5);
 
-          // Number of portals firing simultaneously scales gently with level
-          let volleyCount = 1;
-          if (this.level >= 3 && Math.random() < 0.35) volleyCount = 2;
-          if (this.level >= 6 && Math.random() < 0.25) volleyCount = 3;
-          if (this.level >= 9 && Math.random() < 0.15) volleyCount = 4;
+          const portal = this.portals[Math.floor(Math.random() * this.portals.length)];
+          this.fireFromPortal(portal);
 
-          const shuffledPortals = [...this.portals].sort(() => Math.random() - 0.5);
-          for (let i = 0; i < volleyCount; i++) {
-            this.fireFromPortal(shuffledPortals[i]);
+          // LV.4부터는 가끔 다른 포털에서 동시 사격
+          if (this.level >= 4 && Math.random() < Math.min(0.5, 0.12 + (this.level - 4) * 0.06)) {
+            const others = this.portals.filter(p => p !== portal);
+            this.fireFromPortal(others[Math.floor(Math.random() * others.length)]);
           }
         }
 
-        // Shield Power-Up Item Spawner
+        // Power-Up Item Spawner (Shield Core, EMP Nova Interceptor, Chrono Slow)
         this.itemSpawnTimer -= dt;
         if (this.itemSpawnTimer <= 0) {
-          this.itemSpawnTimer = Math.max(8.5, 13.5 - this.level * 0.35);
-          if (this.items.length < 2) {
+          this.itemSpawnTimer = Math.max(6.2, 10.5 - this.level * 0.25);
+          if (this.items.length < 3) {
             const portal = this.portals[Math.floor(Math.random() * this.portals.length)];
-            this.spawnShieldItem(portal);
+            this.spawnPowerUpItem(portal);
           }
         }
       }
@@ -1322,15 +1428,14 @@
       fireFromPortal(portal) {
         portal.flashTimer = 0.38;
 
-        // Decide Bullet vs Bomb (bombs appear more frequently as levels rise)
-        const bombChance = Math.min(0.45, 0.20 + (this.level - 1) * 0.03);
+        // Decide Bullet vs Specialized Bomb
+        const bombChance = Math.min(0.48, 0.22 + (this.level - 1) * 0.03);
         const isBomb = Math.random() < bombChance;
 
         // Aim partially toward drone and partially spread across the brain cavity
         const toDroneAngle = Math.atan2(this.drone.y - portal.y, this.drone.x - portal.x);
         const aimWeight = Math.min(0.75, 0.32 + (this.level - 1) * 0.045);
 
-        // Blend portal's natural inward angle with aimed angle toward drone
         const spread = (Math.random() - 0.5) * 0.72;
         let fireAngle = portal.inwardAngle + spread;
         if (Math.random() < aimWeight) {
@@ -1338,37 +1443,100 @@
         }
 
         const speedMultiplier = 1 + (this.level - 1) * 0.095;
-        const speed = isBomb
-          ? (145 + Math.random() * 45) * speedMultiplier
-          : (225 + Math.random() * 65) * speedMultiplier;
 
-        // Slight curve/homing drift at higher levels for bullets
-        const turnRate = (!isBomb && this.level >= 4 && Math.random() < 0.35)
-          ? (Math.random() < 0.5 ? 0.38 : -0.38)
-          : 0;
+        if (!isBomb) {
+          // Select Flashy Bullet Variant: PLASMA_BOLT, HELIX_WAVE, or NEEDLE_LASER
+          const roll = Math.random();
+          let bulletStyle = 'PLASMA_BOLT';
+          let speed = (230 + Math.random() * 60) * speedMultiplier;
+          let radius = 5.5;
+          let hue = 190; // Cyan
 
-        this.projectiles.push({
-          type: isBomb ? 'BOMB' : 'BULLET',
-          x: portal.x + Math.cos(fireAngle) * 14,
-          y: portal.y + Math.sin(fireAngle) * 14,
-          vx: Math.cos(fireAngle) * speed,
-          vy: Math.sin(fireAngle) * speed,
-          speed,
-          angle: fireAngle,
-          turnRate,
-          radius: isBomb ? 11.5 : 5.5,
-          age: 0,
-          spin: Math.random() * Math.PI * 2,
-          trail: []
-        });
+          if (this.level >= 2 && roll > 0.66) {
+            bulletStyle = 'HELIX_WAVE';
+            speed *= 0.92;
+            radius = 6.2;
+            hue = 285; // Magenta-Violet
+          } else if (this.level >= 3 && roll < 0.28) {
+            bulletStyle = 'NEEDLE_LASER';
+            speed *= 1.32;
+            radius = 4.6;
+            hue = 155; // Emerald-Cyan
+          }
+
+          const turnRate = (bulletStyle === 'PLASMA_BOLT' && this.level >= 4 && Math.random() < 0.32)
+            ? (Math.random() < 0.5 ? 0.36 : -0.36)
+            : 0;
+
+          this.projectiles.push({
+            type: 'BULLET',
+            subType: bulletStyle,
+            x: portal.x + Math.cos(fireAngle) * 14,
+            y: portal.y + Math.sin(fireAngle) * 14,
+            baseX: portal.x + Math.cos(fireAngle) * 14,
+            baseY: portal.y + Math.sin(fireAngle) * 14,
+            vx: Math.cos(fireAngle) * speed,
+            vy: Math.sin(fireAngle) * speed,
+            speed,
+            angle: fireAngle,
+            turnRate,
+            radius,
+            hue,
+            age: 0,
+            spin: Math.random() * Math.PI * 2,
+            trail: []
+          });
+        } else {
+          // Select Distinct Bomb Type:
+          // 1. PLASMA_MINE (Spiked Crimson/Magenta Sphere)
+          // 2. CLUSTER_BOMB (Octagonal Gold-Orange Core that splits mid-air into 6 shrapnel bullets)
+          // 3. GRAVITY_ORB (Dark Violet Singularity that bends nearby projectiles)
+          // 4. EMP_SHOCK_BOMB (Rhythmic Cyan/Rose Pulse Ring Bomb)
+          const bRoll = Math.random();
+          let bombType = 'PLASMA_MINE';
+          let radius = 12;
+          let speed = (145 + Math.random() * 40) * speedMultiplier;
+
+          if (this.level >= 2 && bRoll < 0.28) {
+            bombType = 'CLUSTER_BOMB';
+            radius = 13;
+            speed *= 0.92;
+          } else if (this.level >= 3 && bRoll < 0.52) {
+            bombType = 'GRAVITY_ORB';
+            radius = 14.5;
+            speed *= 0.78;
+          } else if (this.level >= 2 && bRoll < 0.74) {
+            bombType = 'EMP_SHOCK_BOMB';
+            radius = 12.5;
+            speed *= 0.96;
+          }
+
+          this.projectiles.push({
+            type: 'BOMB',
+            subType: bombType,
+            x: portal.x + Math.cos(fireAngle) * 15,
+            y: portal.y + Math.sin(fireAngle) * 15,
+            vx: Math.cos(fireAngle) * speed,
+            vy: Math.sin(fireAngle) * speed,
+            speed,
+            angle: fireAngle,
+            turnRate: 0,
+            radius,
+            age: 0,
+            splitTime: 1.05 + Math.random() * 0.55,
+            pulseTimer: 0,
+            spin: Math.random() * Math.PI * 2,
+            trail: []
+          });
+        }
 
         this.sound.playLaserFire(isBomb);
 
         // Portal muzzle particles
         const pColor = isBomb ? '#f43f5e' : '#22d3ee';
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 7; i++) {
           const a = fireAngle + (Math.random() - 0.5) * 0.9;
-          const spd = 40 + Math.random() * 90;
+          const spd = 45 + Math.random() * 95;
           this.particles.push({
             x: portal.x,
             y: portal.y,
@@ -1382,51 +1550,135 @@
         }
       }
 
-      spawnShieldItem(portal) {
+      spawnPowerUpItem(portal) {
         portal.flashTimer = 0.45;
-        // Aim gently toward the inner region of the brain
         const targetX = this.brainCenter.x + (Math.random() - 0.5) * this.brainScale.rx * 0.65;
         const targetY = this.brainCenter.y + (Math.random() - 0.5) * this.brainScale.ry * 0.55;
         const angle = Math.atan2(targetY - portal.y, targetX - portal.x);
-        const speed = 95 + Math.random() * 30;
+        const speed = 95 + Math.random() * 28;
+
+        // Weighted Item Selection:
+        // 55% SHIELD_CORE (Evolving multi-tier shield)
+        // 28% EMP_NOVA (Intercepts and vaporizes ALL active bullets & bombs!)
+        // 17% CHRONO_SLOW (Slows enemy projectiles in matrix time-dilation)
+        const roll = Math.random();
+        let itemType = 'SHIELD_CORE';
+        if (roll > 0.72) {
+          itemType = 'EMP_NOVA';
+        } else if (roll > 0.55) {
+          itemType = 'CHRONO_SLOW';
+        }
 
         this.items.push({
-          type: 'SHIELD',
+          type: itemType,
           x: portal.x + Math.cos(angle) * 16,
           y: portal.y + Math.sin(angle) * 16,
           vx: Math.cos(angle) * speed,
           vy: Math.sin(angle) * speed,
-          radius: 15,
+          radius: 16,
           age: 0,
           pulse: 0
         });
       }
 
-      updateProjectiles(dt) {
+      updateProjectiles(dt, realDt) {
         for (let i = this.projectiles.length - 1; i >= 0; i--) {
           const proj = this.projectiles[i];
           proj.age += dt;
-          proj.spin += dt * (proj.type === 'BOMB' ? 5.5 : 12);
+          proj.spin += realDt * (proj.type === 'BOMB' ? 5.5 : 12);
 
-          // Apply subtle curve if curved bullet
-          if (proj.turnRate !== 0 && proj.age < 1.8) {
-            proj.angle += proj.turnRate * dt;
-            proj.vx = Math.cos(proj.angle) * proj.speed;
-            proj.vy = Math.sin(proj.angle) * proj.speed;
+          // Special Bomb & Bullet Behaviors
+          if (proj.type === 'BULLET') {
+            if (proj.turnRate !== 0 && proj.age < 1.8) {
+              proj.angle += proj.turnRate * dt;
+              proj.vx = Math.cos(proj.angle) * proj.speed;
+              proj.vy = Math.sin(proj.angle) * proj.speed;
+            }
+            proj.baseX = (proj.baseX ?? proj.x) + proj.vx * dt;
+            proj.baseY = (proj.baseY ?? proj.y) + proj.vy * dt;
+
+            if (proj.subType === 'HELIX_WAVE') {
+              const perpX = -Math.sin(proj.angle);
+              const perpY = Math.cos(proj.angle);
+              const waveOffset = Math.sin(proj.age * 14) * 14;
+              proj.x = proj.baseX + perpX * waveOffset;
+              proj.y = proj.baseY + perpY * waveOffset;
+            } else {
+              proj.x = proj.baseX;
+              proj.y = proj.baseY;
+            }
+
+            // Emit subtle luminous sparks from high-energy bullets
+            if (Math.random() < realDt * 18) {
+              this.particles.push({
+                x: proj.x,
+                y: proj.y,
+                vx: (Math.random() - 0.5) * 25,
+                vy: (Math.random() - 0.5) * 25,
+                size: 1.6,
+                color: proj.subType === 'HELIX_WAVE' ? '#e879f9' : proj.subType === 'NEEDLE_LASER' ? '#34d399' : '#38bdf8',
+                life: 0.22,
+                maxLife: 0.22
+              });
+            }
+          } else {
+            // BOMB movement & special mechanics
+            proj.x += proj.vx * dt;
+            proj.y += proj.vy * dt;
+
+            // 1. CLUSTER_BOMB: Detonates mid-air into 6 radial shrapnel bolts
+            if (proj.subType === 'CLUSTER_BOMB' && proj.age >= proj.splitTime) {
+              this.detonateClusterBomb(proj);
+              this.projectiles.splice(i, 1);
+              continue;
+            }
+
+            // 2. GRAVITY_ORB: Pulls nearby bullets slightly into curved orbits
+            if (proj.subType === 'GRAVITY_ORB') {
+              for (const other of this.projectiles) {
+                if (other !== proj && other.type === 'BULLET') {
+                  const dx = proj.x - other.x;
+                  const dy = proj.y - other.y;
+                  const dist = Math.hypot(dx, dy);
+                  if (dist > 15 && dist < 135) {
+                    const pull = (1 - dist / 135) * 190 * dt;
+                    other.vx += (dx / dist) * pull;
+                    other.vy += (dy / dist) * pull;
+                    // 속도 상한을 두고, 회전 탄환이 속도를 되돌리지 않도록 speed 동기화
+                    const sp = Math.hypot(other.vx, other.vy);
+                    if (sp > 560) {
+                      other.vx *= 560 / sp;
+                      other.vy *= 560 / sp;
+                    }
+                    other.speed = Math.min(sp, 560);
+                    other.angle = Math.atan2(other.vy, other.vx);
+                  }
+                }
+              }
+            }
+
+            // 3. EMP_SHOCK_BOMB: Emits visible rhythmic shockwave rings as it travels
+            if (proj.subType === 'EMP_SHOCK_BOMB') {
+              proj.pulseTimer += dt;
+              if (proj.pulseTimer >= 0.48) {
+                proj.pulseTimer = 0;
+                this.spawnShockwave(proj.x, proj.y, '#38bdf8', 46);
+              }
+            }
           }
-
-          proj.x += proj.vx * dt;
-          proj.y += proj.vy * dt;
 
           // Motion trail
           proj.trail.push({ x: proj.x, y: proj.y });
-          if (proj.trail.length > (proj.type === 'BOMB' ? 8 : 10)) {
+          const maxTrail = proj.subType === 'NEEDLE_LASER' ? 16 : proj.type === 'BOMB' ? 9 : 12;
+          if (proj.trail.length > maxTrail) {
             proj.trail.shift();
           }
 
-          // 1. Check collision with Player Drone
+          // 1. Check collision with Player Drone (Shield Radius scales with Shield Level!)
           const distToDrone = Math.hypot(proj.x - this.drone.x, proj.y - this.drone.y);
-          const shieldRadius = this.drone.shieldActive ? this.drone.radius + 17 : this.drone.radius;
+          const shieldRadius = this.drone.shieldLevel > 0
+            ? this.drone.radius + 14 + this.drone.shieldLevel * 4.5
+            : this.drone.radius;
 
           if (distToDrone < proj.radius + shieldRadius - 2) {
             this.handleProjectileHitDrone(proj);
@@ -1434,13 +1686,42 @@
             continue;
           }
 
-          // 2. Check Wall Absorption on the opposite/adjacent Brain Surface!
-          // Give 0.16s grace period after spawning at the portal edge before checking wall exit
+          // 2. Check Wall Absorption on the opposite/adjacent Brain Surface
           if (proj.age > 0.16 && !isPointInPolygon(proj.x, proj.y, this.worldBrainPoly)) {
             this.handleProjectileAbsorbedByWall(proj);
             this.projectiles.splice(i, 1);
             continue;
           }
+        }
+      }
+
+      detonateClusterBomb(bomb) {
+        this.sound.playLaserFire(true);
+        this.spawnShockwave(bomb.x, bomb.y, '#fb923c', 65);
+        this.spawnExplosionParticles(bomb.x, bomb.y, '#fb923c', 18);
+
+        const count = 6;
+        const speed = bomb.speed * 1.38;
+        for (let k = 0; k < count; k++) {
+          const a = bomb.spin + (k * Math.PI * 2) / count;
+          this.projectiles.push({
+            type: 'BULLET',
+            subType: 'PLASMA_BOLT',
+            x: bomb.x,
+            y: bomb.y,
+            baseX: bomb.x,
+            baseY: bomb.y,
+            vx: Math.cos(a) * speed,
+            vy: Math.sin(a) * speed,
+            speed,
+            angle: a,
+            turnRate: 0,
+            radius: 5,
+            hue: 32,
+            age: 0.2, // Eligible for wall absorption immediately
+            spin: 0,
+            trail: []
+          });
         }
       }
 
@@ -1480,20 +1761,30 @@
       handleProjectileHitDrone(proj) {
         const d = this.drone;
 
-        // If Energy Shield is active, shatter the projectile spectacularly!
-        if (d.shieldActive) {
-          d.shieldActive = false;
-          d.shieldTimer = 0;
-          d.invulnTimer = 0.95;
+        // If Multi-Tier Energy Shield is active, consume 1 tier (or shatter) and obliterate the hazard!
+        if (d.shieldLevel > 0) {
+          const absorbedTier = d.shieldLevel;
+          d.shieldLevel = Math.max(0, d.shieldLevel - 1);
+          if (d.shieldLevel === 0) {
+            d.shieldTimer = 0;
+          }
+          d.invulnTimer = 0.85;
+          this.hitStopTimer = 0.035;
 
-          this.score += 100;
-          this.screenShake = 11;
+          const bonus = 100 * absorbedTier;
+          this.score += bonus;
+          this.screenShake = 10 + absorbedTier * 2;
+          this.chromaticFlash = 0.45;
           this.sound.playShieldBlock();
 
-          this.spawnShockwave(d.x, d.y, '#facc15', 115);
-          this.spawnShockwave(proj.x, proj.y, '#38bdf8', 70);
-          this.spawnExplosionParticles(proj.x, proj.y, '#facc15', 28);
-          this.addFloatingText(d.x, d.y - 30, '방어막 반사! +100', '#fde047');
+          this.spawnShockwave(d.x, d.y, '#facc15', 110 + absorbedTier * 18);
+          this.spawnShockwave(proj.x, proj.y, '#38bdf8', 75);
+          this.spawnExplosionParticles(proj.x, proj.y, '#fde047', 26 + absorbedTier * 4);
+
+          const msg = d.shieldLevel > 0
+            ? `LV.${absorbedTier} 방어벽 격파! (잔여 LV.${d.shieldLevel}) +${bonus}`
+            : `방어막 반사 격파! +${bonus}`;
+          this.addFloatingText(d.x, d.y - 32, msg, '#fde047');
           return;
         }
 
@@ -1525,43 +1816,130 @@
           item.x += item.vx * dt;
           item.y += item.vy * dt;
 
-          // Gently bounce item off the inner brain wall once so player has a fair chance to grab it
-          if (item.age > 0.35 && !isPointInPolygon(item.x, item.y, this.innerSafePoly)) {
-            if (!item.bounced) {
-              item.bounced = true;
-              const toCenter = Math.atan2(this.brainCenter.y - item.y, this.brainCenter.x - item.x);
-              const spd = Math.hypot(item.vx, item.vy);
-              item.vx = Math.cos(toCenter) * spd;
-              item.vy = Math.sin(toCenter) * spd;
-            } else if (item.age > 9) {
-              this.items.splice(i, 1);
-              continue;
-            }
+          // 아이템이 뇌 밖으로 날아가지 않도록 벽에 닿을 때마다 안쪽으로 튕겨냄
+          if (item.age > 0.6 && !isPointInPolygon(item.x, item.y, this.innerSafePoly)) {
+            const aim = Math.atan2(
+              this.brainCenter.y + (Math.random() - 0.5) * this.brainScale.ry * 0.5 - item.y,
+              this.brainCenter.x + (Math.random() - 0.5) * this.brainScale.rx * 0.5 - item.x
+            );
+            const spd = Math.hypot(item.vx, item.vy) || 100;
+            item.vx = Math.cos(aim) * spd;
+            item.vy = Math.sin(aim) * spd;
+          }
+
+          // 일정 시간 뒤 사라짐
+          if (item.age > 14) {
+            this.items.splice(i, 1);
+            continue;
           }
 
           // Check Pickup by Drone
           const dist = Math.hypot(item.x - this.drone.x, item.y - this.drone.y);
-          if (dist < item.radius + this.drone.radius + 6) {
-            this.activateDroneShield(item);
+          if (dist < item.radius + this.drone.radius + 7) {
+            this.handleItemPickup(item);
             this.items.splice(i, 1);
           }
         }
       }
 
-      activateDroneShield(item) {
+      handleItemPickup(item) {
+        if (item.type === 'SHIELD_CORE') {
+          this.upgradeDroneShield(item);
+        } else if (item.type === 'EMP_NOVA') {
+          this.triggerEmpInterception(item);
+        } else if (item.type === 'CHRONO_SLOW') {
+          this.triggerChronoSlow(item);
+        }
+      }
+
+      upgradeDroneShield(item) {
         const d = this.drone;
-        d.shieldActive = true;
+        d.shieldLevel = Math.min(d.maxShieldLevel, d.shieldLevel + 1);
         d.shieldTimer = d.shieldMaxDuration;
+
+        const tier = d.shieldLevel;
+        const pts = 150 * tier;
+        this.score += pts;
+
+        this.sound.playShieldPickup(tier);
+        this.screenShake = 5 + tier * 2;
+        this.chromaticFlash = 0.35 + tier * 0.1;
+
+        // Increasingly spectacular multi-ring harmonic burst per tier
+        const tierColors = ['#22d3ee', '#34d399', '#facc15', '#e879f9', '#ffffff'];
+        for (let r = 0; r < tier; r++) {
+          this.spawnShockwave(d.x, d.y, tierColors[r % tierColors.length], 85 + r * 28);
+        }
+        this.spawnExplosionParticles(item.x, item.y, tierColors[(tier - 1) % tierColors.length], 24 + tier * 8);
+
+        const label = tier >= d.maxShieldLevel
+          ? `★ MAX HYPER BARRIER LV.${tier}! +${pts}`
+          : `방어벽 진화 LV.${tier}! +${pts}`;
+        this.addFloatingText(d.x, d.y - 34, label, '#fde047');
+      }
+
+      triggerEmpInterception(item) {
+        const d = this.drone;
+        this.sound.playEmpIntercept();
+        this.screenShake = 18;
+        this.chromaticFlash = 0.85;
+        this.hitStopTimer = 0.045;
+
+        // Massive sweeping EMP shockwaves across the entire brain
+        this.spawnShockwave(d.x, d.y, '#fde047', this.brainScale.rx * 1.25);
+        this.spawnShockwave(d.x, d.y, '#22d3ee', this.brainScale.rx * 1.05);
+        this.spawnShockwave(d.x, d.y, '#e879f9', this.brainScale.rx * 0.85);
+
+        const interceptedCount = this.projectiles.length;
+        let totalBonus = 200;
+
+        // Lock onto EVERY active bullet and bomb on screen with laser interception beams!
+        for (const proj of this.projectiles) {
+          const pts = proj.type === 'BOMB' ? 80 : 40;
+          totalBonus += pts;
+          this.dodgedCount++;
+
+          // Create dazzling laser beam from Drone to each intercepted projectile
+          this.laserBeams.push({
+            x1: d.x,
+            y1: d.y,
+            x2: proj.x,
+            y2: proj.y,
+            color: proj.type === 'BOMB' ? '#fde047' : '#22d3ee',
+            life: 0.48,
+            maxLife: 0.48
+          });
+
+          // Vaporization explosion at target position
+          this.spawnShockwave(proj.x, proj.y, '#fde047', proj.type === 'BOMB' ? 54 : 34);
+          this.spawnExplosionParticles(proj.x, proj.y, proj.type === 'BOMB' ? '#fb7185' : '#38bdf8', 16);
+        }
+
+        // Clear all intercepted projectiles
+        this.projectiles = [];
+        this.score += totalBonus;
+        this.levelProgress += Math.min(25, interceptedCount * 1.8);
+        if (this.levelProgress >= 100) {
+          this.levelProgress -= 100;
+          this.advanceLevel();
+        }
+
+        const bannerText = interceptedCount > 0
+          ? `⚡ EMP 전탄 요격 (${interceptedCount}기 파괴)! +${totalBonus}`
+          : `⚡ EMP 노바 펄스 발동! +${totalBonus}`;
+        this.addFloatingText(d.x, d.y - 36, bannerText, '#fde047');
+      }
+
+      triggerChronoSlow(item) {
+        const d = this.drone;
+        this.chronoTimer = 6.5;
         this.score += 150;
+        this.sound.playChronoSlow();
+        this.chromaticFlash = 0.45;
 
-        this.sound.playShieldPickup();
-        this.screenShake = 6;
-
-        // Spectacular multi-ring harmonic burst
-        this.spawnShockwave(d.x, d.y, '#facc15', 110);
-        this.spawnShockwave(d.x, d.y, '#22d3ee', 80);
-        this.spawnExplosionParticles(item.x, item.y, '#fde047', 30);
-        this.addFloatingText(d.x, d.y - 32, '에너지 방어막 활성화! +150', '#fde047');
+        this.spawnShockwave(d.x, d.y, '#a855f7', 130);
+        this.spawnExplosionParticles(item.x, item.y, '#c084fc', 26);
+        this.addFloatingText(d.x, d.y - 34, '⏳ 시냅스 시간 감속 (6.5s) +150', '#d8b4fe');
       }
 
       spawnExplosionParticles(x, y, color, count) {
@@ -1608,6 +1986,20 @@
       // HUD DOM SYNCHRONIZATION
       // --------------------------------------------------------------------------
       updateHudUI() {
+        // Hull Integrity hearts (HP가 바뀔 때만 다시 그림)
+        const hpKey = `${this.drone.hp}/${this.drone.maxHp}`;
+        if (this._hpKey !== hpKey) {
+          this._hpKey = hpKey;
+          let heartsHtml = '';
+          for (let i = 0; i < this.drone.maxHp; i++) {
+            const full = i < this.drone.hp;
+            heartsHtml += `<svg class="w-5 h-5 sm:w-6 sm:h-6" viewBox="0 0 24 24" fill="currentColor" ` +
+              `style="color:${full ? '#f43f5e' : '#334155'};${full ? 'filter:drop-shadow(0 0 6px rgba(244,63,94,0.9));' : ''}">` +
+              `<path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 2.7 4.5 6.4 4.5c2.1 0 3.8 1.2 5.6 3.3 1.8-2.1 3.5-3.3 5.6-3.3 3.7 0 5.5 3.9 4 7.3C19.5 16.4 12 21 12 21z"/></svg>`;
+          }
+          document.getElementById('hudHearts').innerHTML = heartsHtml;
+        }
+
         document.getElementById('hudLevel').textContent = `LV.${this.level}`;
         const pct = Math.min(100, Math.floor(this.levelProgress));
         document.getElementById('hudLevelPct').textContent = `${pct}%`;
@@ -1629,32 +2021,32 @@
           tagEl.className = 'text-[11px] px-2 py-0.5 rounded-full bg-rose-500/30 border border-rose-400/60 text-rose-200 font-semibold animate-pulse';
         }
 
-        // Hearts / Hull Integrity
-        const heartsContainer = document.getElementById('hudHearts');
-        let heartsHtml = '';
-        for (let i = 0; i < this.drone.maxHp; i++) {
-          const active = i < this.drone.hp;
-          heartsHtml += `
-            <span class="inline-block w-4 h-4 sm:w-5 sm:h-5 rounded-md transition-all ${
-              active
-                ? 'bg-gradient-to-br from-rose-400 to-pink-600 shadow-[0_0_10px_rgba(244,63,94,0.8)] border border-rose-200/70'
-                : 'bg-slate-800/80 border border-slate-700 opacity-40'
-            }"></span>
-          `;
-        }
-        heartsContainer.innerHTML = heartsHtml;
-
-        // Shield Badge
+        // Shield Badge (Multi-Tier Evolution Display)
         const shieldText = document.getElementById('hudShieldText');
         const shieldDot = document.getElementById('hudShieldDot');
-        if (this.drone.shieldActive) {
-          shieldText.textContent = `가동 중 (${Math.ceil(this.drone.shieldTimer)}s)`;
-          shieldText.className = 'text-xs sm:text-sm font-bold flex items-center gap-1.5 text-amber-300 neon-text-gold';
+        if (this.drone.shieldLevel > 0) {
+          const lv = this.drone.shieldLevel;
+          const stars = '★'.repeat(lv);
+          shieldText.textContent = `LV.${lv} ${stars} (${Math.ceil(this.drone.shieldTimer)}s)`;
+          shieldText.className = lv >= 4
+            ? 'text-xs sm:text-sm font-black flex items-center gap-1.5 text-fuchsia-300 neon-text-magenta'
+            : 'text-xs sm:text-sm font-bold flex items-center gap-1.5 text-amber-300 neon-text-gold';
           shieldDot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-amber-300 animate-ping';
         } else {
           shieldText.textContent = '미장착';
           shieldText.className = 'text-xs sm:text-sm font-bold flex items-center gap-1.5 text-slate-400';
           shieldDot.className = 'inline-block w-2.5 h-2.5 rounded-full bg-slate-600';
+        }
+
+        // Chrono Slow Badge
+        const chronoBox = document.getElementById('hudChronoBox');
+        if (this.chronoTimer > 0) {
+          chronoBox.classList.remove('hidden');
+          chronoBox.classList.add('flex');
+          document.getElementById('hudChronoText').textContent = `${this.chronoTimer.toFixed(1)}s`;
+        } else {
+          chronoBox.classList.add('hidden');
+          chronoBox.classList.remove('flex');
         }
 
         document.getElementById('hudScore').textContent = Math.floor(this.score).toLocaleString();
@@ -1698,10 +2090,28 @@
         // 6. Incoming Bullets & Bombs
         this.renderProjectiles(ctx);
 
-        // 7. Shockwaves, Particles & Floating Combat Text
+        // 7. EMP Laser Interception Beams, Shockwaves, Particles & Floating Text
         this.renderEffects(ctx);
 
-        // 8. Dramatic Level-Up Banner Overlay on Canvas
+        // 8. Chromatic Flash & Chrono Time-Dilation Vignette
+        if (this.chronoTimer > 0) {
+          ctx.save();
+          const vGrad = ctx.createRadialGradient(w * 0.5, h * 0.5, w * 0.25, w * 0.5, h * 0.5, w * 0.72);
+          vGrad.addColorStop(0, 'rgba(139, 92, 246, 0)');
+          vGrad.addColorStop(1, 'rgba(109, 40, 217, 0.24)');
+          ctx.fillStyle = vGrad;
+          ctx.fillRect(0, 0, w, h);
+          ctx.restore();
+        }
+
+        if (this.chromaticFlash > 0.01) {
+          ctx.save();
+          ctx.fillStyle = `rgba(224, 242, 254, ${this.chromaticFlash * 0.22})`;
+          ctx.fillRect(0, 0, w, h);
+          ctx.restore();
+        }
+
+        // 9. Dramatic Level-Up Banner Overlay on Canvas
         if (this.levelUpBannerTimer > 0) {
           this.renderLevelUpBanner(ctx, w, h);
         }
@@ -1718,7 +2128,7 @@
         bgGrad.addColorStop(0.55, '#070b18');
         bgGrad.addColorStop(1, '#04060c');
         ctx.fillStyle = bgGrad;
-        ctx.fillRect(0, 0, w, h);
+        ctx.fillRect(-60, -60, w + 120, h + 120); // 화면 흔들림 때 가장자리가 비지 않도록 여유
 
         // Subtle cyber grid lines
         ctx.strokeStyle = 'rgba(34, 211, 238, 0.04)';
@@ -1935,49 +2345,103 @@
           ctx.save();
           ctx.translate(item.x, item.y);
 
-          const pulseScale = 1 + Math.sin(item.pulse) * 0.12;
+          const pulseScale = 1 + Math.sin(item.pulse) * 0.14;
           ctx.scale(pulseScale, pulseScale);
 
-          // Outer Golden-Cyan Halo
-          const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 26);
-          glow.addColorStop(0, 'rgba(254, 240, 138, 0.95)');
-          glow.addColorStop(0.5, 'rgba(250, 204, 21, 0.45)');
-          glow.addColorStop(1, 'rgba(34, 211, 238, 0)');
-          ctx.fillStyle = glow;
-          ctx.beginPath();
-          ctx.arc(0, 0, 26, 0, Math.PI * 2);
-          ctx.fill();
+          if (item.type === 'SHIELD_CORE') {
+            // Cyan-Gold Evolving Barrier Core
+            const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 28);
+            glow.addColorStop(0, 'rgba(254, 240, 138, 0.95)');
+            glow.addColorStop(0.5, 'rgba(34, 211, 238, 0.45)');
+            glow.addColorStop(1, 'rgba(34, 211, 238, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(0, 0, 28, 0, Math.PI * 2);
+            ctx.fill();
 
-          // Rotating Geometric Hexagon Ring
-          ctx.save();
-          ctx.rotate(this.globalTime * 3.2);
-          ctx.strokeStyle = '#fde047';
-          ctx.lineWidth = 2.2;
-          ctx.beginPath();
-          for (let i = 0; i < 6; i++) {
-            const a = (i * Math.PI) / 3;
-            const px = Math.cos(a) * 15;
-            const py = Math.sin(a) * 15;
-            if (i === 0) ctx.moveTo(px, py);
-            else ctx.lineTo(px, py);
+            ctx.save();
+            ctx.rotate(this.globalTime * 3.2);
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 2.4;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+              const a = (i * Math.PI) / 3;
+              const px = Math.cos(a) * 15;
+              const py = Math.sin(a) * 15;
+              if (i === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            ctx.restore();
+
+            ctx.rotate(-this.globalTime * 2.5);
+            ctx.fillStyle = '#ffffff';
+            ctx.strokeStyle = '#fde047';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, -8);
+            ctx.lineTo(8, 0);
+            ctx.lineTo(0, 8);
+            ctx.lineTo(-8, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          } else if (item.type === 'EMP_NOVA') {
+            // Gold-Magenta Starburst Full-Screen Interceptor Orb
+            const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 32);
+            glow.addColorStop(0, 'rgba(255, 255, 255, 1)');
+            glow.addColorStop(0.45, 'rgba(250, 204, 21, 0.65)');
+            glow.addColorStop(0.8, 'rgba(232, 121, 249, 0.3)');
+            glow.addColorStop(1, 'rgba(250, 204, 21, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(0, 0, 32, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 8-Pointed Starburst Core
+            ctx.rotate(this.globalTime * 4.5);
+            ctx.fillStyle = '#fde047';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            for (let i = 0; i < 16; i++) {
+              const rad = i % 2 === 0 ? 16 : 6;
+              const a = (i * Math.PI) / 8;
+              const px = Math.cos(a) * rad;
+              const py = Math.sin(a) * rad;
+              if (i === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          } else {
+            // CHRONO_SLOW: Violet-Blue Temporal Hourglass Crystal
+            const glow = ctx.createRadialGradient(0, 0, 2, 0, 0, 28);
+            glow.addColorStop(0, 'rgba(216, 180, 254, 0.95)');
+            glow.addColorStop(0.55, 'rgba(139, 92, 246, 0.45)');
+            glow.addColorStop(1, 'rgba(139, 92, 246, 0)');
+            ctx.fillStyle = glow;
+            ctx.beginPath();
+            ctx.arc(0, 0, 28, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.rotate(Math.sin(this.globalTime * 3) * 0.35);
+            ctx.strokeStyle = '#c084fc';
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.lineWidth = 2.2;
+            ctx.beginPath();
+            ctx.moveTo(-9, -11);
+            ctx.lineTo(9, -11);
+            ctx.lineTo(0, 0);
+            ctx.lineTo(9, 11);
+            ctx.lineTo(-9, 11);
+            ctx.lineTo(0, 0);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
           }
-          ctx.closePath();
-          ctx.stroke();
-          ctx.restore();
-
-          // Inner Diamond Core
-          ctx.rotate(-this.globalTime * 2.5);
-          ctx.fillStyle = '#ffffff';
-          ctx.strokeStyle = '#38bdf8';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(0, -8);
-          ctx.lineTo(8, 0);
-          ctx.lineTo(0, 8);
-          ctx.lineTo(-8, 0);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
 
           ctx.restore();
         }
@@ -1987,7 +2451,7 @@
         const d = this.drone;
 
         // Blink during post-hit invulnerability
-        if (d.invulnTimer > 0 && !d.shieldActive && Math.floor(d.invulnTimer * 18) % 2 === 0) {
+        if (d.invulnTimer > 0 && d.shieldLevel === 0 && Math.floor(d.invulnTimer * 18) % 2 === 0) {
           ctx.save();
           ctx.globalAlpha = 0.4;
           this.drawDroneBody(ctx, d);
@@ -1999,9 +2463,11 @@
         for (let i = 0; i < d.trail.length; i++) {
           const t = d.trail[i];
           const ratio = (i + 1) / d.trail.length;
-          ctx.fillStyle = d.shieldActive
-            ? `rgba(250, 204, 21, ${ratio * 0.28})`
-            : `rgba(34, 211, 238, ${ratio * 0.25})`;
+          ctx.fillStyle = d.shieldLevel >= 3
+            ? `hsla(${(this.globalTime * 220 + i * 20) % 360}, 95%, 65%, ${ratio * 0.34})`
+            : d.shieldLevel > 0
+              ? `rgba(250, 204, 21, ${ratio * 0.3})`
+              : `rgba(34, 211, 238, ${ratio * 0.25})`;
           ctx.beginPath();
           ctx.arc(t.x, t.y, d.radius * 0.65 * ratio, 0, Math.PI * 2);
           ctx.fill();
@@ -2010,8 +2476,8 @@
         // 2. Drone Chassis
         this.drawDroneBody(ctx, d);
 
-        // 3. SPECTACULAR MULTI-LAYERED ENERGY SHIELD AURA (When Item Active)
-        if (d.shieldActive) {
+        // 3. EVOLVING MULTI-TIER ENERGY SHIELD AURA (Lv.1 -> Lv.5)
+        if (d.shieldLevel > 0) {
           this.renderSpectacularShield(ctx, d);
         }
       }
@@ -2076,7 +2542,7 @@
         ctx.stroke();
 
         // Glowing Neural Sensor Eye Core
-        const coreColor = d.shieldActive ? '#fde047' : '#22d3ee';
+        const coreColor = d.shieldLevel > 0 ? '#fde047' : '#22d3ee';
         ctx.fillStyle = coreColor;
         ctx.shadowColor = coreColor;
         ctx.shadowBlur = 14;
@@ -2096,31 +2562,44 @@
         ctx.save();
         ctx.translate(d.x, d.y);
 
-        const shieldR = d.radius + 18;
-        const pulse = 1 + Math.sin(this.globalTime * 8) * 0.05;
+        const lv = d.shieldLevel;
+        const shieldR = d.radius + 14 + lv * 4.5;
+        const pulse = 1 + Math.sin(this.globalTime * (7 + lv)) * 0.05;
         const timeRatio = Math.max(0, d.shieldTimer / d.shieldMaxDuration);
+        const rainbowHue = (this.globalTime * 160) % 360;
 
-        // 1. Prismatic Radial Energy Field
-        const auraGrad = ctx.createRadialGradient(0, 0, d.radius * 0.4, 0, 0, shieldR * 1.25);
-        auraGrad.addColorStop(0, 'rgba(34, 211, 238, 0.05)');
-        auraGrad.addColorStop(0.65, 'rgba(250, 204, 21, 0.24)');
-        auraGrad.addColorStop(0.88, 'rgba(232, 121, 249, 0.42)');
-        auraGrad.addColorStop(1, 'rgba(34, 211, 238, 0)');
+        // 1. Prismatic Radial Plasma Aura (Intensifies with Tier)
+        const auraGrad = ctx.createRadialGradient(0, 0, d.radius * 0.4, 0, 0, shieldR * 1.32);
+        auraGrad.addColorStop(0, 'rgba(34, 211, 238, 0.04)');
+        if (lv === 1) {
+          auraGrad.addColorStop(0.75, 'rgba(34, 211, 238, 0.25)');
+          auraGrad.addColorStop(1, 'rgba(34, 211, 238, 0)');
+        } else if (lv === 2) {
+          auraGrad.addColorStop(0.65, 'rgba(52, 211, 153, 0.24)');
+          auraGrad.addColorStop(0.9, 'rgba(250, 204, 21, 0.36)');
+          auraGrad.addColorStop(1, 'rgba(34, 211, 238, 0)');
+        } else {
+          auraGrad.addColorStop(0.55, `hsla(${rainbowHue}, 95%, 60%, 0.22)`);
+          auraGrad.addColorStop(0.85, `hsla(${(rainbowHue + 120) % 360}, 95%, 65%, 0.44)`);
+          auraGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        }
         ctx.fillStyle = auraGrad;
         ctx.beginPath();
-        ctx.arc(0, 0, shieldR * 1.25 * pulse, 0, Math.PI * 2);
+        ctx.arc(0, 0, shieldR * 1.32 * pulse, 0, Math.PI * 2);
         ctx.fill();
 
-        // 2. Rotating Outer Harmonic Hexagon Barrier
+        // 2. Tier 1+ Primary Geometric Polygon Barrier (Hexagon -> Octagon -> Dodecagon)
+        const sides = lv === 1 ? 6 : lv === 2 ? 8 : 12;
+        const primaryColor = lv === 1 ? '#22d3ee' : lv === 2 ? '#34d399' : lv === 3 ? '#fde047' : `hsl(${rainbowHue}, 100%, 68%)`;
         ctx.save();
-        ctx.rotate(this.globalTime * 2.2);
-        ctx.strokeStyle = '#fde047';
-        ctx.shadowColor = '#facc15';
-        ctx.shadowBlur = 18;
-        ctx.lineWidth = 2.5;
+        ctx.rotate(this.globalTime * (2.0 + lv * 0.35));
+        ctx.strokeStyle = primaryColor;
+        ctx.shadowColor = primaryColor;
+        ctx.shadowBlur = 14 + lv * 4;
+        ctx.lineWidth = 2.2 + lv * 0.35;
         ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const a = (i * Math.PI) / 3;
+        for (let i = 0; i < sides; i++) {
+          const a = (i * Math.PI * 2) / sides;
           const px = Math.cos(a) * shieldR * pulse;
           const py = Math.sin(a) * shieldR * pulse;
           if (i === 0) ctx.moveTo(px, py);
@@ -2130,49 +2609,99 @@
         ctx.stroke();
         ctx.restore();
 
-        // 3. Counter-Rotating Inner Cyan Energy Ring + Remaining Duration Arc
-        ctx.save();
-        ctx.rotate(-this.globalTime * 3.4);
-        ctx.strokeStyle = '#22d3ee';
-        ctx.lineWidth = 2;
-        ctx.setLineDash([8, 6]);
-        ctx.beginPath();
-        ctx.arc(0, 0, (shieldR - 5) * pulse, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-
-        // Duration Gauge Arc
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.arc(0, 0, shieldR + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * timeRatio);
-        ctx.stroke();
-
-        // 4. Orbiting Prismatic Sparks
-        for (let i = 0; i < 4; i++) {
-          const orbitAngle = this.globalTime * 5 + (i * Math.PI) / 2;
-          const ox = Math.cos(orbitAngle) * (shieldR + 2);
-          const oy = Math.sin(orbitAngle) * (shieldR + 2);
-          ctx.fillStyle = i % 2 === 0 ? '#ffffff' : '#e879f9';
+        // 3. Tier 2+ Counter-Rotating Inner Harmonic Ring & Star Geometry
+        if (lv >= 2) {
+          ctx.save();
+          ctx.rotate(-this.globalTime * 3.4);
+          ctx.strokeStyle = lv >= 4 ? '#ffffff' : '#fde047';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([10, 5]);
           ctx.beginPath();
-          ctx.arc(ox, oy, 2.6, 0, Math.PI * 2);
+          ctx.arc(0, 0, (shieldR - 6) * pulse, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Inner Sacred Star Polygon for Lv.3+
+          if (lv >= 3) {
+            ctx.strokeStyle = `hsla(${(rainbowHue + 180) % 360}, 95%, 70%, 0.75)`;
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+              const a1 = (i * Math.PI) / 3;
+              const a2 = ((i + 2) * Math.PI) / 3;
+              ctx.moveTo(Math.cos(a1) * (shieldR - 3), Math.sin(a1) * (shieldR - 3));
+              ctx.lineTo(Math.cos(a2) * (shieldR - 3), Math.sin(a2) * (shieldR - 3));
+            }
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        // 4. Tier 3+ Orbiting Defensive Energy Satellite Nodes + Electric Arcs
+        const orbCount = lv === 1 ? 2 : lv === 2 ? 4 : lv * 2;
+        const orbPositions = [];
+        for (let i = 0; i < orbCount; i++) {
+          const orbitAngle = this.globalTime * (4.2 + lv * 0.5) + (i * Math.PI * 2) / orbCount;
+          const ox = Math.cos(orbitAngle) * (shieldR + 3);
+          const oy = Math.sin(orbitAngle) * (shieldR + 3);
+          orbPositions.push({ x: ox, y: oy });
+
+          ctx.fillStyle = i % 2 === 0 ? '#ffffff' : primaryColor;
+          ctx.shadowColor = primaryColor;
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(ox, oy, 2.4 + lv * 0.35, 0, Math.PI * 2);
           ctx.fill();
         }
+
+        // Electric Lightning Arcs connecting orbiting nodes at Lv.4+
+        if (lv >= 4 && orbPositions.length >= 2) {
+          ctx.strokeStyle = `hsla(${(rainbowHue + 60) % 360}, 100%, 78%, 0.7)`;
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          for (let i = 0; i < orbPositions.length; i++) {
+            const p1 = orbPositions[i];
+            const p2 = orbPositions[(i + 1) % orbPositions.length];
+            const midX = (p1.x + p2.x) * 0.5 + (Math.random() - 0.5) * 6;
+            const midY = (p1.y + p2.y) * 0.5 + (Math.random() - 0.5) * 6;
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(midX, midY);
+            ctx.lineTo(p2.x, p2.y);
+          }
+          ctx.stroke();
+        }
+
+        // Remaining Duration Gauge Arc
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.arc(0, 0, shieldR + 7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * timeRatio);
+        ctx.stroke();
 
         ctx.restore();
       }
 
       renderProjectiles(ctx) {
         for (const proj of this.projectiles) {
-          // Render Trail
+          // 1. Luminous Multi-Segment Trail
           if (proj.trail.length > 1) {
             ctx.save();
             for (let i = 0; i < proj.trail.length - 1; i++) {
               const ratio = (i + 1) / proj.trail.length;
-              ctx.strokeStyle = proj.type === 'BOMB'
-                ? `rgba(244, 63, 94, ${ratio * 0.45})`
-                : `rgba(34, 211, 238, ${ratio * 0.55})`;
-              ctx.lineWidth = proj.radius * 1.3 * ratio;
+              if (proj.type === 'BOMB') {
+                const trailCol = proj.subType === 'CLUSTER_BOMB'
+                  ? `rgba(251, 146, 60, ${ratio * 0.5})`
+                  : proj.subType === 'GRAVITY_ORB'
+                    ? `rgba(168, 85, 247, ${ratio * 0.55})`
+                    : proj.subType === 'EMP_SHOCK_BOMB'
+                      ? `rgba(56, 189, 248, ${ratio * 0.5})`
+                      : `rgba(244, 63, 94, ${ratio * 0.5})`;
+                ctx.strokeStyle = trailCol;
+              } else {
+                ctx.strokeStyle = `hsla(${proj.hue || 190}, 95%, 62%, ${ratio * 0.65})`;
+              }
+              ctx.lineWidth = proj.radius * (proj.subType === 'NEEDLE_LASER' ? 0.95 : 1.35) * ratio;
               ctx.lineCap = 'round';
               ctx.beginPath();
               ctx.moveTo(proj.trail[i].x, proj.trail[i].y);
@@ -2186,63 +2715,182 @@
           ctx.translate(proj.x, proj.y);
 
           if (proj.type === 'BULLET') {
-            // Sleek Plasma Dart Bullet
             ctx.rotate(Math.atan2(proj.vy, proj.vx));
-            ctx.fillStyle = '#22d3ee';
-            ctx.shadowColor = '#06b6d4';
-            ctx.shadowBlur = 14;
+            const hue = proj.hue || 190;
+            const mainCol = `hsl(${hue}, 95%, 60%)`;
 
+            // Outer Neon Glow Halo
+            ctx.fillStyle = `hsla(${hue}, 95%, 60%, 0.28)`;
             ctx.beginPath();
-            ctx.moveTo(11, 0);
-            ctx.lineTo(-7, -4.5);
-            ctx.lineTo(-4, 0);
-            ctx.lineTo(-7, 4.5);
-            ctx.closePath();
+            ctx.ellipse(0, 0, proj.subType === 'NEEDLE_LASER' ? 18 : 13, 7, 0, 0, Math.PI * 2);
             ctx.fill();
 
+            ctx.fillStyle = mainCol;
+            ctx.shadowColor = mainCol;
+            ctx.shadowBlur = 16;
+
+            if (proj.subType === 'NEEDLE_LASER') {
+              // Ultra-sleek High-Velocity Needle Laser
+              ctx.beginPath();
+              ctx.moveTo(16, 0);
+              ctx.lineTo(-10, -3.2);
+              ctx.lineTo(-6, 0);
+              ctx.lineTo(-10, 3.2);
+              ctx.closePath();
+              ctx.fill();
+            } else if (proj.subType === 'HELIX_WAVE') {
+              // Diamond Winged Plasma Orb
+              ctx.beginPath();
+              ctx.moveTo(11, 0);
+              ctx.lineTo(0, -6.5);
+              ctx.lineTo(-9, 0);
+              ctx.lineTo(0, 6.5);
+              ctx.closePath();
+              ctx.fill();
+            } else {
+              // Standard Plasma Dart Bolt
+              ctx.beginPath();
+              ctx.moveTo(12, 0);
+              ctx.lineTo(-8, -5);
+              ctx.lineTo(-4, 0);
+              ctx.lineTo(-8, 5);
+              ctx.closePath();
+              ctx.fill();
+            }
+
+            // White-hot inner core
             ctx.fillStyle = '#ffffff';
             ctx.beginPath();
-            ctx.arc(2, 0, 2.2, 0, Math.PI * 2);
+            ctx.arc(2, 0, 2.3, 0, Math.PI * 2);
             ctx.fill();
           } else {
-            // Spiky Cyber-Ordnance Bomb
-            ctx.rotate(proj.spin);
+            // 4 DISTINCT CUSTOM BOMB DESIGNS
             const r = proj.radius;
             const pulse = 1 + Math.sin(proj.age * 16) * 0.14;
 
-            // Danger Aura
-            ctx.fillStyle = 'rgba(244, 63, 94, 0.25)';
-            ctx.beginPath();
-            ctx.arc(0, 0, r * 1.65 * pulse, 0, Math.PI * 2);
-            ctx.fill();
+            if (proj.subType === 'CLUSTER_BOMB') {
+              // 2. CLUSTER BOMB: Octagonal Golden-Orange Core with glowing fission vents
+              ctx.rotate(proj.spin * 0.8);
+              ctx.fillStyle = 'rgba(251, 146, 60, 0.28)';
+              ctx.beginPath();
+              ctx.arc(0, 0, r * 1.7 * pulse, 0, Math.PI * 2);
+              ctx.fill();
 
-            // Spikes
-            ctx.fillStyle = '#fb7185';
-            ctx.shadowColor = '#f43f5e';
-            ctx.shadowBlur = 16;
-            const spikes = 8;
-            ctx.beginPath();
-            for (let s = 0; s < spikes * 2; s++) {
-              const rad = s % 2 === 0 ? r * 1.35 : r * 0.72;
-              const a = (s * Math.PI) / spikes;
-              const sx = Math.cos(a) * rad;
-              const sy = Math.sin(a) * rad;
-              if (s === 0) ctx.moveTo(sx, sy);
-              else ctx.lineTo(sx, sy);
+              ctx.fillStyle = '#f97316';
+              ctx.strokeStyle = '#fde047';
+              ctx.lineWidth = 2;
+              ctx.shadowColor = '#fb923c';
+              ctx.shadowBlur = 18;
+              ctx.beginPath();
+              for (let s = 0; s < 8; s++) {
+                const a = (s * Math.PI) / 4;
+                const sx = Math.cos(a) * r * 1.15;
+                const sy = Math.sin(a) * r * 1.15;
+                if (s === 0) ctx.moveTo(sx, sy);
+                else ctx.lineTo(sx, sy);
+              }
+              ctx.closePath();
+              ctx.fill();
+              ctx.stroke();
+
+              // Fission countdown core
+              ctx.fillStyle = '#ffffff';
+              ctx.beginPath();
+              ctx.arc(0, 0, r * 0.42 * pulse, 0, Math.PI * 2);
+              ctx.fill();
+            } else if (proj.subType === 'GRAVITY_ORB') {
+              // 3. GRAVITY / VOID SINGULARITY ORB: Dark event horizon + swirling violet accretion rings
+              ctx.fillStyle = 'rgba(168, 85, 247, 0.25)';
+              ctx.beginPath();
+              ctx.arc(0, 0, r * 2.1 * pulse, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Swirling accretion disk rings
+              ctx.save();
+              ctx.rotate(proj.spin * 1.4);
+              ctx.strokeStyle = '#c084fc';
+              ctx.lineWidth = 2.2;
+              ctx.beginPath();
+              ctx.ellipse(0, 0, r * 1.65, r * 0.65, 0, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.rotate(Math.PI / 2);
+              ctx.strokeStyle = '#38bdf8';
+              ctx.beginPath();
+              ctx.ellipse(0, 0, r * 1.65, r * 0.65, 0, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.restore();
+
+              // Pitch-black singularity event horizon
+              ctx.fillStyle = '#050312';
+              ctx.strokeStyle = '#e879f9';
+              ctx.lineWidth = 2.5;
+              ctx.shadowColor = '#a855f7';
+              ctx.shadowBlur = 20;
+              ctx.beginPath();
+              ctx.arc(0, 0, r * 0.85, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+            } else if (proj.subType === 'EMP_SHOCK_BOMB') {
+              // 4. EMP SHOCKWAVE BOMB: Concentric Neon Cyan & Rose Harmonic Turbine
+              ctx.rotate(-proj.spin);
+              ctx.strokeStyle = '#38bdf8';
+              ctx.shadowColor = '#0ea5e9';
+              ctx.shadowBlur = 18;
+              ctx.lineWidth = 2.5;
+              ctx.beginPath();
+              ctx.arc(0, 0, r * 1.2 * pulse, 0, Math.PI * 2);
+              ctx.stroke();
+
+              // 4 Turbine Fins
+              ctx.fillStyle = '#0284c7';
+              for (let k = 0; k < 4; k++) {
+                ctx.rotate(Math.PI / 2);
+                ctx.beginPath();
+                ctx.moveTo(4, -3);
+                ctx.lineTo(r * 1.35, 0);
+                ctx.lineTo(4, 3);
+                ctx.closePath();
+                ctx.fill();
+              }
+
+              ctx.fillStyle = '#f43f5e';
+              ctx.beginPath();
+              ctx.arc(0, 0, r * 0.45, 0, Math.PI * 2);
+              ctx.fill();
+            } else {
+              // 1. PLASMA MINE: Spiked Crimson/Magenta Cyber-Ordnance
+              ctx.rotate(proj.spin);
+              ctx.fillStyle = 'rgba(244, 63, 94, 0.25)';
+              ctx.beginPath();
+              ctx.arc(0, 0, r * 1.65 * pulse, 0, Math.PI * 2);
+              ctx.fill();
+
+              ctx.fillStyle = '#fb7185';
+              ctx.shadowColor = '#f43f5e';
+              ctx.shadowBlur = 16;
+              const spikes = 8;
+              ctx.beginPath();
+              for (let s = 0; s < spikes * 2; s++) {
+                const rad = s % 2 === 0 ? r * 1.35 : r * 0.72;
+                const a = (s * Math.PI) / spikes;
+                const sx = Math.cos(a) * rad;
+                const sy = Math.sin(a) * rad;
+                if (s === 0) ctx.moveTo(sx, sy);
+                else ctx.lineTo(sx, sy);
+              }
+              ctx.closePath();
+              ctx.fill();
+
+              ctx.fillStyle = '#1e1b4b';
+              ctx.beginPath();
+              ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2);
+              ctx.fill();
+
+              ctx.fillStyle = Math.sin(proj.age * 22) > 0 ? '#fde047' : '#f43f5e';
+              ctx.beginPath();
+              ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2);
+              ctx.fill();
             }
-            ctx.closePath();
-            ctx.fill();
-
-            // Inner Dark Core + Blinking Detonator LED
-            ctx.fillStyle = '#1e1b4b';
-            ctx.beginPath();
-            ctx.arc(0, 0, r * 0.62, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.fillStyle = Math.sin(proj.age * 22) > 0 ? '#fde047' : '#f43f5e';
-            ctx.beginPath();
-            ctx.arc(0, 0, r * 0.3, 0, Math.PI * 2);
-            ctx.fill();
           }
 
           ctx.restore();
@@ -2250,6 +2898,31 @@
       }
 
       renderEffects(ctx) {
+        // EMP Laser Interception Beams (Drawn first for dramatic impact)
+        for (const lb of this.laserBeams) {
+          const alpha = Math.max(0, lb.life / lb.maxLife);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.strokeStyle = lb.color;
+          ctx.shadowColor = lb.color;
+          ctx.shadowBlur = 18;
+          ctx.lineWidth = 4.5 * alpha;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(lb.x1, lb.y1);
+          ctx.lineTo(lb.x2, lb.y2);
+          ctx.stroke();
+
+          // White core beam
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.6 * alpha;
+          ctx.beginPath();
+          ctx.moveTo(lb.x1, lb.y1);
+          ctx.lineTo(lb.x2, lb.y2);
+          ctx.stroke();
+          ctx.restore();
+        }
+
         // Expanding Shockwave Rings
         for (const sw of this.shockwaves) {
           const alpha = Math.max(0, sw.life / sw.maxLife);
@@ -2263,14 +2936,17 @@
           ctx.restore();
         }
 
-        // Particles
+        // Particles (많을 때는 글로우를 끄고 성능 확보)
+        const particleGlow = this.particles.length < 140;
         for (const pt of this.particles) {
           const alpha = Math.max(0, pt.life / pt.maxLife);
           ctx.save();
           ctx.globalAlpha = alpha;
           ctx.fillStyle = pt.color;
-          ctx.shadowColor = pt.color;
-          ctx.shadowBlur = 8;
+          if (particleGlow) {
+            ctx.shadowColor = pt.color;
+            ctx.shadowBlur = 8;
+          }
           ctx.beginPath();
           ctx.arc(pt.x, pt.y, pt.size * alpha, 0, Math.PI * 2);
           ctx.fill();
